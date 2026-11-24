@@ -14,6 +14,7 @@ async function verify(Game){
  g=blank();[a,b,c]=g.p;let sw=g.group(0);a.dead=true;a.hp=0;await g.effect(a,3,sw,{target:b},-1);results.push(eq([a.hp,b.hp,sw.entries.length],[0,10,0],'§5 dead participant exchange fails'));
  g=blank();[a,b,c]=g.p;const use=g.action(0,9);a.hand=[use];q=g.group(0);g.emit(q,'use',a,null,use);g.enqueue(q);await g.drain();q=g.group(0);g.emit(q,'use',a,null,use);g.enqueue(q);results.push(eq([g.queue.length,g.history.length,a.hand.length],[0,1,1],'§9.1 same trigger only once per turn'));
  g=new Game({players:4,rounds:2,hp:2,seed:42},choose);results.push(eq(g.deck.length,30,'§10 initial deck'));await g.startRound();for(let i=0;i<1000&&g.phase!=='finished';i++){if(g.phase==='between'){await g.startRound();continue}let p=g.p[g.turn];let card=p.hand.find(c=>g.playable(c)&&c.kind==='action'&&c.e.some(e=>e.id===0))??p.hand.find(c=>g.playable(c));if(card)await g.play(card.id);else await g.endTurn()}results.push(eq([g.phase,g.round,g.p.every(p=>p.abilities.length>=2)],['finished',2,true],'§3–7 two round complete and abilities persist'));
+ g=new Game({players:3,rounds:1,reviveChance:1},async(p,q,o)=>o[0]);g.deck=[];g.grave=[];g.turn=0;g.phase='play';g.p[0].dead=true;g.p[0].hp=0;g.p[0].hand=[g.action(10,1),g.action(11,1)];await g.startTurn();results.push(eq([g.p[0].abilities.length,g.p[0].hand.length,g.p[1].hp,g.p[2].hp,g.turn],[1,0,8,8,1],'§5 dead turn triggers and ability acquisition'));
  return results
 }
 console.log((await verify(Game)).join('\n'));
