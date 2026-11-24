@@ -8,11 +8,13 @@ const uniqueE=new Set([3,9,10,12]); // effects without quantities
 const countE=new Set([0,1,2,4,5,6,7,8,11,13]);
 const labelsE=['任意のプレイヤーにダメージ','他プレイヤー全員にダメージ','自分の体力を増やす','任意のプレイヤーと体力を交換','山札からドロー','全員がドロー','自分の手札を捨てる（任意）','対象のランダム手札を捨てる','アクション権獲得','発動後手札に残る','前回発動カードの効果を発動','手札を対象に渡す','墓地を山札に戻してシャッフル','ランダムな効果を発動'];
 const describe=c=>c.kind==='event'?'イベント：'+V[c.event]:c.t.map(i=>T[i]).join(' / ')+' → '+c.e.map(({id,n})=>labelsE[id]+(countE.has(id)?' ×'+n:'')).join(' / ');
+const effectLabel=(id,n=1)=>labelsE[id]+(countE.has(id)?' ×'+n:'');
+const formatCard=c=>c.kind==='event'?'[イベント]\n'+V[c.event]:'[トリガー]\n'+c.t.map(i=>'・'+T[i]).join('\n')+'\n[効果]\n'+c.e.map(({id,n})=>'・'+effectLabel(id,n)).join('\n');
 const copy=x=>JSON.parse(JSON.stringify(x));
 class Game{
 constructor({players=4,rounds=3,hp=10,seed=1,deck=null,reviveChance=.25}={},choose=async(p,prompt,opts)=>opts[0]){
 if(!Number.isInteger(players)||players<2||players>6||!Number.isInteger(rounds)||rounds<1||!Number.isInteger(hp)||hp<1)throw Error('設定値が不正');
-this.cfg={players,rounds,hp,seed,reviveChance};this.seed=Number(seed)>>>0;this.choose=choose;this.id=0;this.round=0;this.turn=0;this.turns=0;this.phase='ready';this.p=Array.from({length:players},(_,i)=>({id:i,hp,dead:false,score:0,hand:[],abilities:[],ap:0}));this.log=[];this.history=[];this.queue=[];this.fallen=[];this.deck=[];this.grave=[];this.used=new Set();this.events=new Set();this.active=null;this.lastActivation=null;this.onActivation=null;
+this.cfg={players,rounds,hp,seed,reviveChance};this.seed=Number(seed)>>>0;this.choose=choose;this.id=0;this.round=0;this.turn=0;this.turns=0;this.phase='ready';this.p=Array.from({length:players},(_,i)=>({id:i,hp,dead:false,score:0,hand:[],abilities:[],ap:0}));this.log=[];this.history=[];this.queue=[];this.fallen=[];this.deck=[];this.grave=[];this.used=new Set();this.events=new Set();this.active=null;this.lastActivation=null;this.onActivation=null;this.onEffect=null;
 if(deck){if(deck.length<30||deck.length>40||V.some((_,i)=>!deck.some(c=>c.kind==='event'&&c.event===i)))throw Error('デッキは30〜40枚、各イベント1枚以上');this.deck=deck.map(c=>c.kind==='event'?this.event(c.event):this.action(c.t[0],c.e[0].id));}
 else{for(let i=0;i<4;i++)for(let j=0;j<2;j++)this.deck.push(this.event(i));for(const [e,n] of [[0,8],[4,4],[2,4],[13,4]])for(let j=0;j<n;j++)this.deck.push(this.action(0,e));for(let j=0;j<2;j++)this.deck.push(this.action(this.int(T.length),this.int(E.length)));}
 }
@@ -61,13 +63,14 @@ hpChange(p,delta,actor,g){if(p.dead||delta===0)return;const old=p.hp;p.hp=Math.m
 alive(){return this.p.filter(p=>!p.dead)}
 async target(p){return (await this.pick(p,'任意のプレイヤー（全効果共通）',this.alive().map(v=>({v,label:'P'+(v.id+1)+' HP '+v.hp}))))?.v??null}
 needsTarget(e,prev){return e.some(x=>[0,3,7,11,13].includes(x.id)||(x.id===10&&prev>=0&&this.needsTarget(this.history[prev].e,prev-1)))}
-async activation(info,run){this.active=info;this.lastActivation=info;try{await this.onActivation?.(info);return await run()}finally{this.active=null;await this.onActivation?.(null)}}
+async activation(info,run){info.progress=null;info.randomResults=[];this.active=info;this.lastActivation=info;try{await this.onActivation?.(info);return await run()}finally{this.active=null;await this.onActivation?.(null)}}
+async reportEffect(path){if(!this.active)return;this.active.progress=copy(path);await this.onEffect?.(this.active)}
 async fire(c,discardOwner=null,trigger=0){const p=this.owner(c)??discardOwner;if(!p)return;
 if(c.kind==='event'&&this.events.has(c.id))return;
 const g=this.group(p.id),prev=this.history.length-1,record={id:c.id,e:c.kind==='event'?[]:copy(c.e)};this.history.push(record);this.say('P'+(p.id+1)+' 発動 #'+c.id+' '+describe(c));
 await this.activation({kind:'card',player:p.id,card:copy(c),trigger,label:describe(c)},async()=>{
 let stay=false;
-if(c.kind==='event'){this.events.add(c.id);await this.eventEffect(p,c)}
+if(c.kind==='event'){this.events.add(c.id);await this.reportEffect([{label:V[c.event],kind:'event'}]);await this.eventEffect(p,c)}
 else{const ctx={target:null,selected:false,stay:false};await this.effects(p,record.e,g,ctx,prev);stay=ctx.stay}
 const owner=this.owner(c);if(!stay){if(owner){owner.hand.splice(owner.hand.indexOf(c),1);this.grave.push(c)}else if(discardOwner&&this.deck.includes(c)){this.deck.splice(this.deck.indexOf(c),1);this.grave.push(c)}}
 this.enqueue(g)})}
@@ -75,10 +78,10 @@ async eventEffect(p,c){const other=x=>x!==c;let x;
 switch(c.event){case 0:x=await this.pickCard(p,'コピーする手札',other);if(x){const clone={...copy(x),id:++this.id};p.hand.push(clone);if(clone.kind==='event')this.events.add(clone.id);this.say('コピー #'+x.id+' → #'+clone.id)}break;
 case 1:x=await this.pickCard(p,'削除する手札',other);if(x){p.hand.splice(p.hand.indexOf(x),1);this.say('削除 #'+x.id)}break;
 case 2:case 3:x=await this.pickCard(p,'改変する手札',x=>x.kind==='action');if(x)await this.modify(p,x,c.event===2?'change':'add');break}}
-async effects(p,e,g,ctx,prev){if(this.needsTarget(e,prev)&&!ctx.selected){ctx.target=await this.target(p);ctx.selected=true}
-for(const line of e){let repeat=1;for(const a of p.abilities)if(a===6&&this.rnd()<.05){repeat++;this.say('効果追加発動(5%)')}
-for(let r=0;r<repeat;r++)for(let i=0;i<line.n;i++)await this.effect(p,line.id,g,ctx,prev)}}
-async effect(p,id,g,ctx,prev){let q=ctx.target;switch(id){
+async effects(p,e,g,ctx,prev,trail=[]){if(this.needsTarget(e,prev)&&!ctx.selected){ctx.target=await this.target(p);ctx.selected=true}
+for(const [index,line] of e.entries()){let repeat=1;for(const a of p.abilities)if(a===6&&this.rnd()<.05){repeat++;this.say('効果追加発動(5%)')}
+for(let r=0;r<repeat;r++)for(let i=0;i<line.n;i++){const path=[...trail,{kind:'line',id:line.id,index,total:e.length,unit:i+1,units:line.n,repeat:r+1,repeats:repeat,label:effectLabel(line.id)}];await this.reportEffect(path);await this.effect(p,line.id,g,ctx,prev,path)}}}
+async effect(p,id,g,ctx,prev,path=[]){let q=ctx.target;switch(id){
 case 0:if(q)this.hpChange(q,-1,p,g);break;
 case 1:for(const x of this.order())if(x!==p)this.hpChange(x,-1,p,g);break;
 case 2:this.hpChange(p,1,p,g);break;
@@ -89,10 +92,10 @@ case 6:{const x=await this.pickCard(p,'捨てる手札（任意）',()=>true,tru
 case 7:if(q&&q.hand.length)this.discard(q,q.hand[this.int(q.hand.length)],g);break;
 case 8:p.ap++;break;
 case 9:ctx.stay=true;break;
-case 10:if(prev>=0)await this.effects(p,this.history[prev].e,g,ctx,prev-1);break;
+case 10:if(prev>=0)await this.effects(p,this.history[prev].e,g,ctx,prev-1,path);break;
 case 11:if(q){const x=await this.pickCard(p,'渡す手札');if(x&&q!==p){p.hand.splice(p.hand.indexOf(x),1);q.hand.push(x);this.say('手札譲渡 #'+x.id)}}break;
 case 12:this.deck=this.shuffle(this.deck.concat(this.grave.splice(0)));break;
-case 13:{const random=this.int(E.length-1);if([0,3,7,11].includes(random)&&!ctx.selected){ctx.target=await this.target(p);ctx.selected=true}await this.effect(p,random,g,ctx,prev);break}
+case 13:{const random=this.int(E.length-1);const result={kind:'random',id:random,label:effectLabel(random)};this.say('ランダム効果 → '+result.label);if(this.active)this.active.randomResults.push(result);const next=[...path,result];await this.reportEffect(next);if([0,3,7,11].includes(random)&&!ctx.selected){ctx.target=await this.target(p);ctx.selected=true}await this.effect(p,random,g,ctx,prev,next);break}
 }}
 async startRound(){if(!['ready','between'].includes(this.phase))throw Error('ラウンド開始不可');this.round++;this.turn=(this.round-1)%this.p.length;this.turns=0;this.fallen=[];this.history=[];this.active=null;this.lastActivation=null;this.used.clear();this.events.clear();this.queue=[];this.phase='setup';
 for(const p of this.order()){await this.ability(p);p.dead=false;p.ap=0;p.hp=this.cfg.hp+p.abilities.filter(a=>a===0).length}
@@ -106,7 +109,7 @@ if(p.dead||p.ap<=0){await this.closeTurn();if(this.alive().length<=1){await this
 this.phase='play';return}}
 playable(c){return c.kind==='event'?!this.events.has(c.id):c.t.includes(0)&&!this.used.has(c.id+':0')}
 async play(id){if(this.phase!=='play')throw Error('操作不可');const p=this.p[this.turn];const c=p.hand.find(x=>x.id===id);if(!c||!this.playable(c)||p.dead||p.ap<1)throw Error('使用不可');p.ap--;if(c.kind==='event')await this.fire(c);else{const g=this.group(p.id);this.emit(g,'use',p,null,c);this.enqueue(g)}await this.drain();if(this.alive().length<=1)await this.finishRound();else if(p.dead||p.ap===0)await this.endTurn()}
-async closeTurn(){const p=this.p[this.turn];const g=this.group(p.id);this.emit(g,'end',p);this.enqueue(g);await this.drain();for(const a of p.abilities)if(a===7){const source=this.group(p.id);await this.activation({kind:'ability',player:p.id,label:A[a]},async()=>{this.say('P'+(p.id+1)+' 発動 '+A[a]);for(const x of this.order())if(x!==p)this.hpChange(x,-1,p,source);this.enqueue(source)});await this.drain()}p.ap=0}
+async closeTurn(){const p=this.p[this.turn];const g=this.group(p.id);this.emit(g,'end',p);this.enqueue(g);await this.drain();for(const a of p.abilities)if(a===7){const source=this.group(p.id);await this.activation({kind:'ability',player:p.id,label:A[a]},async()=>{this.say('P'+(p.id+1)+' 発動 '+A[a]);await this.reportEffect([{kind:'ability',id:1,label:effectLabel(1)}]);for(const x of this.order())if(x!==p)this.hpChange(x,-1,p,source);this.enqueue(source)});await this.drain()}p.ap=0}
 async endTurn(){if(this.phase!=='play')throw Error('ターン終了不可');await this.closeTurn();if(this.alive().length<=1){await this.finishRound();return}this.turn=(this.turn+1)%this.p.length;await this.startTurn()}
 async finishRound(){this.phase='upgrade';for(const p of this.p){if(p.abilities.includes(7))this.say('P'+(p.id+1)+' ラウンド限定アビリティ喪失');p.abilities=p.abilities.filter(a=>a!==7)}const rank=[...this.fallen,...this.alive()];rank.forEach((p,i)=>{p.score+=i;for(const a of p.abilities)if(a===4)p.score++;this.say('P'+(p.id+1)+' 累計 '+p.score+'点')});
 for(const p of this.order()){const ac=p.hand.filter(x=>x.kind==='action');let opts=[{v:0,label:'ランダムカード追加'}];if(ac.length)opts.push({v:1,label:'手札を改変'});if(ac.length>=2)opts.push({v:2,label:'手札を融合'});
@@ -116,6 +119,6 @@ else if(choice===1){const c=await this.pickCard(p,'改変する手札',c=>c.kind
 else {const a=await this.pickCard(p,'融合する1枚目',c=>c.kind==='action');const b=await this.pickCard(p,'融合する2枚目',c=>c.kind==='action'&&c!==a);a.t=[...new Set([...a.t,...b.t])];for(const e of b.e)this.addEffect(a,e.id,e.n);p.hand.splice(p.hand.indexOf(b),1);this.say('融合 #'+a.id+' + #'+b.id)}}
 this.deck.push(...this.grave.splice(0));for(const p of this.p)this.deck.push(...p.hand.splice(0));this.phase=this.round>=this.cfg.rounds?'finished':'between';if(this.phase==='finished'){const max=Math.max(...this.p.map(p=>p.score));this.say('勝者 '+this.p.filter(p=>p.score===max).map(p=>'P'+(p.id+1)).join(' / '))}}
 }
-return {Game,T,E,V,A,labelsE,describe}
+return {Game,T,E,V,A,labelsE,describe,formatCard,effectLabel}
 }
-export const {Game,T,E,V,A,labelsE,describe}=makeEngine();
+export const {Game,T,E,V,A,labelsE,describe,formatCard,effectLabel}=makeEngine();
