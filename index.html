@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#fff5de">
   <title>Bless Us</title>
-  <link rel="stylesheet" href="./style.css">
+  <link rel="stylesheet" href="./style.css?v=20261125-mobile-1">
 </head>
 <body>
   <svg class="symbol-defs" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><defs>
@@ -25,12 +25,40 @@
     <symbol id="i-close" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol>
     <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 5 5L20 7"/></symbol>
   </defs></svg>
-  <div id="app" class="app-shell"></div>
+  <div id="app" class="app-shell">
+    <div class="startup" role="status" aria-live="polite">
+      <h1>Bless Us</h1>
+      <p id="startup-status">ゲームを読み込んでいます…</p>
+      <noscript><p>JavaScriptを有効にしてから再読み込みしてください。</p></noscript>
+    </div>
+  </div>
   <div id="dialog" class="dialog-layer" hidden></div>
   <div id="tooltip" class="tooltip" hidden></div>
   <div id="dragGhost" class="drag-ghost" hidden></div>
   <div id="toast" role="status" class="toast" hidden></div>
   <script async src="https://cdn.jsdelivr.net/npm/phaser@3.90.0/dist/phaser.min.js" onload="window.dispatchEvent(new Event('bless-phaser-ready'))"></script>
-  <script type="module" src="./app.mjs"></script>
+  <script type="module">
+    const app = document.getElementById('app');
+    const timeout = setTimeout(() => {
+      const status = document.getElementById('startup-status');
+      if (status) status.textContent = '読み込みに時間がかかっています。通信状態を確認してください。';
+    }, 12000);
+    try {
+      await import('./app.mjs?v=20261125-mobile-1');
+      if (!app.querySelector('.home')) throw new Error('ホーム画面を初期化できませんでした');
+    } catch (error) {
+      console.error('Bless Us startup failed', error);
+      app.replaceChildren();
+      const box = document.createElement('main');
+      box.className = 'startup';
+      const title = document.createElement('h1'); title.textContent = 'Bless Us';
+      const message = document.createElement('p'); message.setAttribute('role', 'alert');
+      message.textContent = 'ゲームを読み込めませんでした。ページを再読み込みしてください。';
+      const detail = document.createElement('small'); detail.textContent = String(error);
+      const retry = document.createElement('button'); retry.className = 'primary'; retry.textContent = '再読み込み';
+      retry.addEventListener('click', () => location.reload());
+      box.append(title, message, detail, retry); app.append(box);
+    } finally { clearTimeout(timeout); }
+  </script>
 </body>
 </html>

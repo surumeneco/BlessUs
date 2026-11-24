@@ -1,0 +1,26 @@
+name: Browser smoke test
+on:
+  pull_request:
+    branches: [develop]
+  push:
+    branches: [develop]
+permissions:
+  contents: read
+jobs:
+  viewport:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --no-save --no-package-lock playwright@1.56.1
+      - run: npx playwright install --with-deps chromium
+      - run: |
+          python3 -m http.server 8000 --bind 127.0.0.1 > /tmp/bless-http.log 2>&1 &
+          for i in $(seq 1 20); do curl -fsS http://127.0.0.1:8000/ >/dev/null && break; sleep 1; done
+          node test.mjs
+          node prototype-test.mjs
+          node browser-test.mjs
+
