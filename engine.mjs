@@ -15,8 +15,8 @@ class Game{
 constructor({players=4,rounds=3,hp=10,seed=1,deck=null,reviveChance=.25}={},choose=async(p,prompt,opts)=>opts[0]){
 if(!Number.isInteger(players)||players<2||players>6||!Number.isInteger(rounds)||rounds<1||!Number.isInteger(hp)||hp<1)throw Error('設定値が不正');
 this.cfg={players,rounds,hp,seed,reviveChance};this.seed=Number(seed)>>>0;this.choose=choose;this.id=0;this.round=0;this.turn=0;this.turns=0;this.phase='ready';this.p=Array.from({length:players},(_,i)=>({id:i,hp,dead:false,score:0,hand:[],abilities:[],ap:0}));this.log=[];this.history=[];this.queue=[];this.fallen=[];this.deck=[];this.grave=[];this.used=new Set();this.events=new Set();this.active=null;this.lastActivation=null;this.onActivation=null;this.onEffect=null;
-if(deck){if(deck.length<30||deck.length>40||V.some((_,i)=>!deck.some(c=>c.kind==='event'&&c.event===i)))throw Error('デッキは30〜40枚、各イベント1枚以上');this.deck=deck.map(c=>c.kind==='event'?this.event(c.event):this.action(c.t[0],c.e[0].id));}
-else{for(let i=0;i<4;i++)for(let j=0;j<2;j++)this.deck.push(this.event(i));for(const [e,n] of [[0,8],[4,4],[2,4],[13,4]])for(let j=0;j<n;j++)this.deck.push(this.action(0,e));for(let j=0;j<2;j++)this.deck.push(this.action(this.int(T.length),this.int(E.length)));}
+if(deck){if(deck.length<40||deck.length>60||V.some((_,i)=>!deck.some(c=>c.kind==='event'&&c.event===i)))throw Error('デッキは40〜60枚、各イベント1枚以上');this.deck=deck.map(c=>c.kind==='event'?this.event(c.event):this.action(c.t[0],c.e[0].id));}
+else{for(let i=0;i<4;i++)for(let j=0;j<3;j++)this.deck.push(this.event(i));for(const [e,n] of [[0,10],[4,5],[2,5],[13,5]])for(let j=0;j<n;j++)this.deck.push(this.action(0,e));for(let j=0;j<3;j++)this.deck.push(this.action(this.int(T.length),this.int(E.length)));}
 }
 rnd(){this.seed=(Math.imul(this.seed,1664525)+1013904223)>>>0;return this.seed/4294967296}
 int(n){return Math.floor(this.rnd()*n)}
