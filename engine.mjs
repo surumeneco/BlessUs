@@ -53,7 +53,7 @@ enqueue(g){if(!g.entries.length)return;
 const ordered=this.order(g.origin);const lists=ordered.map(p=>g.entries.filter(x=>x.p===p.id).sort((a,b)=>a.pos-b.pos||a.seq-b.seq));
 const cards=lists.map(l=>[...new Set(l.map(x=>x.c))]);const entries=[];for(let rank=0;rank<Math.max(...cards.map(x=>x.length));rank++)for(let i=0;i<cards.length;i++)if(cards[i][rank])entries.push(...lists[i].filter(x=>x.c===cards[i][rank]));
 this.queue.push(entries)}
-async drain(){while(this.queue.length){const entries=this.queue.shift();for(const entry of entries){if(this.owner(entry.c))await this.fire(entry.c);else this.say('#'+entry.c.id+' 発動失敗（手札外）')}}}
+async drain(){while(this.queue.length){const entries=this.queue.shift();for(const entry of entries){if(this.owner(entry.c)||entry.t===1)await this.fire(entry.c,entry.t===1?this.p[entry.p]:null);else this.say('#'+entry.c.id+' 発動失敗（手札外）')}}}
 take(){if(!this.deck.length&&this.grave.length){this.deck=this.shuffle(this.grave.splice(0));this.say('墓地を山札へ')}return this.deck.pop()}
 draw(p,n,g=null){for(let i=0;i<n;i++){const c=this.take();if(!c){this.say('P'+(p.id+1)+' ドロー失敗');continue}p.hand.push(c);this.say('P'+(p.id+1)+' ドロー #'+c.id);if(g)this.emit(g,'draw',p)}}
 discard(p,c,g){if(!p.hand.includes(c))return;this.emit(g,'discard',p,null,c);p.hand.splice(p.hand.indexOf(c),1);this.grave.push(c);this.say('P'+(p.id+1)+' 捨札 #'+c.id)}
@@ -61,13 +61,13 @@ hpChange(p,delta,actor,g){if(p.dead||delta===0)return;const old=p.hp;p.hp=Math.m
 alive(){return this.p.filter(p=>!p.dead)}
 async target(p){return (await this.pick(p,'任意のプレイヤー（全効果共通）',this.alive().map(v=>({v,label:'P'+(v.id+1)+' HP '+v.hp}))))?.v??null}
 needsTarget(e,prev){return e.some(x=>[0,3,7,11,13].includes(x.id)||(x.id===10&&prev>=0&&this.needsTarget(this.history[prev].e,prev-1)))}
-async fire(c){const p=this.owner(c);if(!p)return;
+async fire(c,discardOwner=null){const p=this.owner(c)??discardOwner;if(!p)return;
 if(c.kind==='event'&&this.events.has(c.id))return;
 const g=this.group(p.id),prev=this.history.length-1,record={id:c.id,e:c.kind==='event'?[]:copy(c.e)};this.history.push(record);this.say('P'+(p.id+1)+' 発動 #'+c.id+' '+describe(c));
 let stay=false;
 if(c.kind==='event'){this.events.add(c.id);await this.eventEffect(p,c)}
 else{const ctx={target:null,selected:false,stay:false};await this.effects(p,record.e,g,ctx,prev);stay=ctx.stay}
-const owner=this.owner(c);if(owner&&!stay){owner.hand.splice(owner.hand.indexOf(c),1);this.grave.push(c)}
+const owner=this.owner(c);if(!stay){if(owner){owner.hand.splice(owner.hand.indexOf(c),1);this.grave.push(c)}else if(discardOwner&&this.deck.includes(c)){this.deck.splice(this.deck.indexOf(c),1);this.grave.push(c)}}
 this.enqueue(g)}
 async eventEffect(p,c){const other=x=>x!==c;let x;
 switch(c.event){case 0:x=await this.pickCard(p,'コピーする手札',other);if(x){const clone={...copy(x),id:++this.id};p.hand.push(clone);if(clone.kind==='event')this.events.add(clone.id);this.say('コピー #'+x.id+' → #'+clone.id)}break;
