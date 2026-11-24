@@ -39,7 +39,7 @@ const pool=(kind==='t'?T:E).map((_,i)=>i).filter(i=>kind==='t'?!c.t.includes(i):
 if(!pool.length){this.say('改変候補なし');return false}
 const id=random?pool[this.int(pool.length)]:(await this.pick(p,'追加・変更先',this.opts(all?pool:this.sample(pool),kind==='t'?T:labelsE))).v;
 if(mode==='change'){
-if(kind==='t'){const prev=c.t[old];c.t[old]=id;if(this.used.has(c.id+':'+prev))this.used.add(c.id+':'+id)}
+if(kind==='t'){const prev=c.t[old];c.t[old]=id;if(this.used.delete(c.id+':'+prev))this.used.add(c.id+':'+id)}
 else{const prev=c.e[old];c.e.splice(old,1);const existing=c.e.find(e=>e.id===id);if(existing&&!uniqueE.has(id))existing.n+=prev.n;else if(!existing)c.e.splice(old,0,{id,n:uniqueE.has(id)?1:prev.n})}
 }else if(kind==='t')c.t.push(id);else this.addEffect(c,id);
 this.say('P'+(p.id+1)+' 改変 #'+c.id+' '+describe(c));return true}
@@ -53,7 +53,7 @@ enqueue(g){if(!g.entries.length)return;
 const ordered=this.order(g.origin);const lists=ordered.map(p=>g.entries.filter(x=>x.p===p.id).sort((a,b)=>a.pos-b.pos||a.seq-b.seq));
 const cards=lists.map(l=>[...new Set(l.map(x=>x.c))]);const entries=[];for(let rank=0;rank<Math.max(...cards.map(x=>x.length));rank++)for(let i=0;i<cards.length;i++)if(cards[i][rank])entries.push(...lists[i].filter(x=>x.c===cards[i][rank]));
 this.queue.push(entries)}
-async drain(){let n=0;while(this.queue.length){const entries=this.queue.shift();for(const entry of entries){if(++n>5000)throw Error('検証用連鎖上限：処理を中断しました');if(this.owner(entry.c))await this.fire(entry.c);else this.say('#'+entry.c.id+' 発動失敗（手札外）')}}}
+async drain(){while(this.queue.length){const entries=this.queue.shift();for(const entry of entries){if(this.owner(entry.c))await this.fire(entry.c);else this.say('#'+entry.c.id+' 発動失敗（手札外）')}}}
 take(){if(!this.deck.length&&this.grave.length){this.deck=this.shuffle(this.grave.splice(0));this.say('墓地を山札へ')}return this.deck.pop()}
 draw(p,n,g=null){for(let i=0;i<n;i++){const c=this.take();if(!c){this.say('P'+(p.id+1)+' ドロー失敗');continue}p.hand.push(c);this.say('P'+(p.id+1)+' ドロー #'+c.id);if(g)this.emit(g,'draw',p)}}
 discard(p,c,g){if(!p.hand.includes(c))return;this.emit(g,'discard',p,null,c);p.hand.splice(p.hand.indexOf(c),1);this.grave.push(c);this.say('P'+(p.id+1)+' 捨札 #'+c.id)}
@@ -98,7 +98,7 @@ this.shuffle(this.deck);
 for(const p of this.order())this.draw(p,5+p.abilities.filter(a=>a===1).length);
 for(const p of this.order())for(const a of p.abilities)if(a===2||a===3){const c=await this.pickCard(p,'開始時アビリティ '+A[a],x=>x.kind==='action');if(c)await this.modify(p,c,'add',a===2?'t':'e',true)}
 await this.startTurn()}
-async startTurn(){while(true){this.used.clear();this.events.clear();this.turns++;const p=this.p[this.turn];this.say('P'+(p.id+1)+' ターン開始');if(p.dead){if(this.rnd()<this.cfg.reviveChance)await this.ability(p);this.turn=(this.turn+1)%this.p.length;continue}
+async startTurn(){while(true){this.used.clear();this.events.clear();this.turns++;const p=this.p[this.turn];this.say('P'+(p.id+1)+' ターン開始');if(p.dead){this.say('P'+(p.id+1)+' 脱落者ターン');if(this.rnd()<this.cfg.reviveChance)await this.ability(p);this.turn=(this.turn+1)%this.p.length;continue}
 const g=this.group(p.id);this.emit(g,'start',p);this.draw(p,1,g);p.ap++;this.enqueue(g);await this.drain();if(this.alive().length<=1){await this.finishRound();return}
 if(p.dead||p.ap<=0){await this.closeTurn();if(this.alive().length<=1){await this.finishRound();return}this.turn=(this.turn+1)%this.p.length;continue}
 this.phase='play';return}}
