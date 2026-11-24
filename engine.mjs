@@ -98,7 +98,7 @@ this.shuffle(this.deck);
 for(const p of this.order())this.draw(p,5+p.abilities.filter(a=>a===1).length);
 for(const p of this.order())for(const a of p.abilities)if(a===2||a===3){const c=await this.pickCard(p,'開始時アビリティ '+A[a],x=>x.kind==='action');if(c)await this.modify(p,c,'add',a===2?'t':'e',true)}
 await this.startTurn()}
-async startTurn(){while(true){this.used.clear();this.events.clear();this.turns++;const p=this.p[this.turn];this.say('P'+(p.id+1)+' ターン開始');if(p.dead){this.say('P'+(p.id+1)+' 脱落者ターン');if(this.rnd()<this.cfg.reviveChance)await this.ability(p);this.turn=(this.turn+1)%this.p.length;continue}
+async startTurn(){while(true){this.used.clear();this.events.clear();this.turns++;const p=this.p[this.turn];this.say('P'+(p.id+1)+' ターン開始');if(p.dead){this.say('P'+(p.id+1)+' 脱落者ターン');const g=this.group(p.id);this.emit(g,'start',p);this.enqueue(g);await this.drain();if(this.alive().length<=1){await this.finishRound();return}if(this.rnd()<this.cfg.reviveChance)await this.ability(p);await this.closeTurn();if(this.alive().length<=1){await this.finishRound();return}this.turn=(this.turn+1)%this.p.length;continue}
 const g=this.group(p.id);this.emit(g,'start',p);this.draw(p,1,g);p.ap++;this.enqueue(g);await this.drain();if(this.alive().length<=1){await this.finishRound();return}
 if(p.dead||p.ap<=0){await this.closeTurn();if(this.alive().length<=1){await this.finishRound();return}this.turn=(this.turn+1)%this.p.length;continue}
 this.phase='play';return}}
