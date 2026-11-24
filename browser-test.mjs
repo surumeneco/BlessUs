@@ -1,70 +1,24 @@
 import assert from 'node:assert/strict';
 import {chromium} from 'playwright';
 import {resolve} from 'node:path';
-const phaser=resolve('node_modules/phaser/dist/phaser.min.js');
-const loadPhaser=page=>page.route('https://cdn.jsdelivr.net/**',route=>route.fulfill({path:phaser,contentType:'application/javascript'}));
-const base=process.env.BLESS_TEST_URL||'http://127.0.0.1:8000/';
-const browser=await chromium.launch({headless:true});
-const sizes=[[320,568],[360,640],[393,740],[412,915],[844,390],[1280,800]];
-async function fits(page,label){
- const result=await page.evaluate(()=>({scroll:document.documentElement.scrollWidth,viewport:document.documentElement.clientWidth}));
- assert.ok(result.scroll<=result.viewport+1,`${label}: horizontal overflow ${JSON.stringify(result)}`);
-}
+import {mkdir} from 'node:fs/promises';
+const base=(process.env.BLESS_TEST_URL||'http://127.0.0.1:8000/')+'?test=1',phaser=resolve('node_modules/phaser/dist/phaser.min.js');
+const browser=await chromium.launch({headless:true,args:['--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader']});
+const sizes=[[320,568,2],[360,640,3],[393,740,3],[412,915,2],[844,390,2],[1280,800,1]];await mkdir('screenshots',{recursive:true});
+async function snap(page){return page.evaluate(()=>window.__blessTest.snapshot())}
+async function wait(page,predicate,label,timeout=18000){let state;const end=Date.now()+timeout;while(Date.now()<end){state=await snap(page);if(predicate(state))return state;if(state.page==='error')throw Error('game error: '+label);await page.waitForTimeout(60)}throw Error(label+': '+JSON.stringify(state).slice(0,1600))}
+function hitPoint(s,id){const h=s.hits.filter(x=>x.id===id&&!x.disabled).at(-1);if(!h)throw Error(`missing enabled ${id}: ${JSON.stringify(s.hits.map(x=>x.id))}`);const {r}=h;for(const px of [.18,.5,.83])for(const py of [.5,.2,.8]){const x=r.x+r.w*px,y=r.y+r.h*py;const top=s.hits.filter(a=>x>=a.r.x&&x<=a.r.x+a.r.w&&y>=a.r.y&&y<=a.r.y+a.r.h).sort((a,b)=>b.z-a.z||s.hits.indexOf(b)-s.hits.indexOf(a))[0];if(top?.id===id)return {x,y}}throw Error('no visible point for '+id)}
+async function click(page,id,touch=false){const s=await snap(page),{x,y}=hitPoint(s,id);if(touch)await page.touchscreen.tap(x,y);else await page.mouse.click(x,y);await page.waitForTimeout(35)}
+async function capture(page,label){await page.screenshot({path:`screenshots/${label}.png`})}
+async function open(width,height,dpr){const mobile=width<500,context=await browser.newContext({viewport:{width,height},deviceScaleFactor:dpr,isMobile:mobile,hasTouch:mobile});const page=await context.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));page.on('dialog',d=>{errors.push('native dialog '+d.type());d.dismiss()});await page.route('https://cdn.jsdelivr.net/**',route=>route.fulfill({path:phaser,contentType:'application/javascript'}));await page.goto(base);await page.waitForFunction(()=>!!window.__blessTest,{timeout:20000});return {page,context,errors,mobile}}
 try{
- for(const [width,height] of sizes){
-  const mobile=width<500;
-  const context=await browser.newContext({viewport:{width,height},isMobile:mobile,hasTouch:mobile,deviceScaleFactor:mobile?2:1});
-  const page=await context.newPage(),errors=[];
-  page.on('pageerror',error=>errors.push(error.message));
-  await loadPhaser(page);
-  page.on('dialog',d=>{errors.push('native browser dialog: '+d.type());d.dismiss()});
-  await page.goto(base);
-  await page.locator('.home-menu [data-action="room"]').waitFor({state:'visible'});
-  await page.locator('body.phaser-rendered').waitFor();
-  assert.equal(await page.locator('.phaser-stage canvas').count(),2);
-  assert.equal(await page.locator('.home-copy .sub,.home-copy .eyebrow').count(),0);
-  await fits(page,`${width}x${height} home`);
-  for(const button of await page.locator('.home-menu button').all()){
-   const box=await button.boundingBox();assert.ok(box&&box.x>=-1&&box.x+box.width<=width+1,`${width}x${height} menu button clipped`);
-  }
-  await page.locator('[data-action="room"]').click();
-  await page.locator('.room-page').waitFor();
-  await fits(page,`${width}x${height} room`);
-  await page.locator('[data-action="home"]').click();
-  await page.locator('[data-action="deck"]').click();
-  await page.locator('.deck-page').waitFor();
-  await fits(page,`${width}x${height} deck`);
-  const ratio=await page.locator('.collection-item .card').first().evaluate(el=>el.clientWidth/el.clientHeight);assert.ok(Math.abs(ratio-5/7)<.04,`wrong card ratio ${ratio}`);
-  await page.locator('[data-action="matrix"]').click();await page.locator('.matrix').waitFor();
-  const color=await page.locator('.matrix td:not(:first-child):not(.nonzero)').first().evaluate(el=>getComputedStyle(el).backgroundColor);assert.equal(color,'rgba(0, 0, 0, 0)');
-  await page.locator('.dialog-foot [data-dialog="close"]').click();
-  await page.locator('[data-action="resetDeck"]').click();await page.locator('#game-confirm').waitFor();await page.locator('#game-confirm').click();
-  await page.locator('[data-action="deckHome"]').click();
-  await page.locator('[data-action="settings"]').click();
-  await page.locator('.dialog').waitFor();
-  for(const key of ['master','bgm','se'])assert.equal(await page.locator('#set-'+key).inputValue(),'50');
-  const dialog=await page.locator('.dialog').boundingBox();assert.ok(dialog&&dialog.x>=-1&&dialog.x+dialog.width<=width+1&&dialog.y>=-1&&dialog.y+dialog.height<=height+1,`settings outside viewport ${width}x${height}`);
-  assert.deepEqual(errors,[],`${width}x${height} startup errors`);
-  await context.close();console.log(`PASS ${width}x${height} home/room/deck/settings`);
- }
- const context=await browser.newContext({viewport:{width:393,height:740},isMobile:true,hasTouch:true});
- const page=await context.newPage();
- await page.route('https://cdn.jsdelivr.net/**',r=>r.abort());
- await page.addInitScript(()=>localStorage.setItem('bless-us-decks-v1','{"obsolete":true}'));
- await page.goto(base);await page.locator('.home-menu').waitFor();console.log('PASS corrupt saved deck state');
- await page.route('**/engine.mjs*',r=>r.abort());
- await page.reload();await page.getByRole('alert').filter({hasText:'ゲームを読み込めませんでした'}).waitFor();
- await fits(page,'startup failure');assert.ok(await page.getByRole('button',{name:'再読み込み'}).isVisible());console.log('PASS visible module-failure recovery');
- await context.close();
- const gameplay=await browser.newContext({viewport:{width:393,height:740},isMobile:true,hasTouch:true});
- const battle=await gameplay.newPage(),errors=[];battle.on('pageerror',e=>errors.push(e.message));await loadPhaser(battle);
- await battle.addInitScript(()=>localStorage.setItem('bless-us-settings-v1',JSON.stringify({speed:4,reduced:true,master:0,bgm:0,se:0})));
- await battle.goto(base);await battle.locator('body.phaser-rendered').waitFor();await battle.locator('[data-action="room"]').click();
- await battle.locator('[data-mode="1"]').click();await battle.locator('[data-mode="2"]').click();await battle.locator('[data-mode="3"]').click();await battle.locator('#room-seed').fill('42');await battle.locator('[data-action="newGame"]').click();
- await battle.locator('.choice-grid.ability-grid').waitFor();await battle.locator('[data-switch-choice]').nth(3).waitFor();
- await battle.locator('[data-switch-choice]').nth(3).click();await battle.locator('.choice-grid.ability-grid [data-opt]').first().click();await battle.locator('[data-dialog="choiceConfirm"]').click();
- for(let i=0;i<3;i++){await battle.locator('.choice-grid.ability-grid [data-opt]').first().click();await battle.locator('[data-dialog="choiceConfirm"]').click()}
- for(let i=0;i<20;i++){if(await battle.locator('#end-turn:enabled').count())break;if(await battle.locator('[data-action="confirmTarget"]:visible:enabled').count()){await battle.locator('[data-action="confirmTarget"]:visible:enabled').click();continue}if(await battle.locator('.hand-card.target:visible').count()){await battle.locator('.hand-card.target:visible').last().click({position:{x:12,y:20},timeout:5000});continue}if(await battle.locator('.seat-node.target:visible').count()){await battle.locator('.seat-node.target:visible').first().click();continue}if(await battle.locator('.choice-grid [data-opt]:visible').count()){await battle.locator('.choice-grid [data-opt]:visible').first().click();await battle.locator('[data-dialog="choiceConfirm"]').click();continue}await battle.waitForTimeout(100)}
- await battle.locator('#end-turn:enabled').waitFor();await fits(battle,'actual battle');assert.ok(await battle.locator('.hand-card').count()>0);assert.equal(await battle.locator('.hand-card').first().evaluate(el=>getComputedStyle(el.querySelector('.card')).opacity),'0');assert.equal(await battle.getByText('使用可能',{exact:true}).count(),0);
- await battle.locator('#end-turn').click();await battle.waitForTimeout(250);assert.deepEqual(errors,[],'Phaser battle startup errors');await gameplay.close();console.log('PASS Phaser battle and simultaneous human prompts');
+ for(const [width,height,dpr] of sizes){const {page,context,errors,mobile}=await open(width,height,dpr);const backing=await page.evaluate(()=>{const c=document.querySelector('canvas'),r=c.getBoundingClientRect();return {w:c.width,h:c.height,cw:r.width,ch:r.height,count:document.querySelectorAll('canvas').length,ui:document.querySelectorAll('button,input,select,[contenteditable]').length}});assert.equal(backing.count,1);assert.equal(backing.ui,0);assert.ok(backing.w>=width*dpr-2&&backing.h>=height*dpr-2,JSON.stringify(backing));assert.ok(Math.abs(backing.cw-width)<2&&Math.abs(backing.ch-height)<2,JSON.stringify(backing));await capture(page,`home-${width}x${height}`);await click(page,'room',mobile);assert.equal((await snap(page)).page,'room');await click(page,'back',mobile);await click(page,'deck',mobile);assert.equal((await snap(page)).page,'deck');await capture(page,`deck-${width}x${height}`);await click(page,'matrix',mobile);assert.equal((await snap(page)).aux,'matrix');await capture(page,`matrix-${width}x${height}`);await click(page,'modal-close',mobile);await click(page,'deck-name',mobile);assert.equal((await snap(page)).aux,'editText');await click(page,'key-0',mobile);await click(page,'keyboard-done',mobile);assert.ok((await snap(page)).deck.name.endsWith('a'));await click(page,'back',mobile);await click(page,'confirm',mobile);await click(page,'settings',mobile);const st=await snap(page);assert.equal(st.aux,'settings');assert.deepEqual([st.settings.master,st.settings.bgm,st.settings.se],[50,50,50]);await capture(page,`settings-${width}x${height}`);assert.deepEqual(errors,[]);await context.close();console.log(`PASS native single-canvas ${width}x${height} at DPR ${dpr}`)}
+ const {page,context,errors}=await open(393,740,3);await click(page,'settings',true);await click(page,'speed-4',true);await click(page,'setting-reduced',true);await click(page,'master-0',true);await click(page,'settings-done',true);await click(page,'room',true);for(const i of [1,2,3])await click(page,'mode-'+i,true);await click(page,'start',true);await wait(page,s=>s.pending.length===4&&s.choice?.kind==='ability','parallel ability prompts');await capture(page,'ability-mobile');await click(page,'choice-player-3',true);assert.equal((await snap(page)).choice.id,3);
+ async function solve(){const s=await snap(page);if(s.flow?.ready){await click(page,'flow-next',true);return true}if(!s.choice)return false;const c=s.choice;if(c.kind==='card'){const h=s.hits.find(x=>x.id.startsWith('hand-')&&c.options.some(o=>String(o.v)===x.id.slice(5)));if(h){if(c.selected==null)await click(page,h.id,true);await click(page,'target-confirm',true);return true}if(s.hits.some(x=>x.id==='choice-none')){await click(page,'choice-none',true);return true}throw Error('no visible card target')}
+ if(c.kind==='player'){if(c.selected==null){const hit=s.hits.find(x=>x.id.startsWith('seat-'));assert.ok(hit);await click(page,hit.id,true)}await click(page,'target-confirm',true);return true}if(c.kind==='confirm'){await click(page,'choice-confirm',true);return true}if(c.kind==='vote'){const h=s.hits.find(x=>x.id.startsWith('vote-')&&!x.id.startsWith('vote-filter'));await click(page,h.id,true);await click(page,'choice-confirm',true);return true}const h=s.hits.find(x=>/^choice-\d+$/.test(x.id));assert.ok(h);await click(page,h.id,true);await click(page,'choice-confirm',true);return true}
+ let s;for(let i=0;i<100;i++){s=await snap(page);if(s.game?.phase==='play'&&!s.game.busy)break;if(!await solve())await page.waitForTimeout(60)}s=await wait(page,s=>s.game?.phase==='play'&&!s.game.busy,'play after setup');assert.equal(s.game.view,s.game.turn);assert.ok(s.game.hand.length>=5);await capture(page,'battle-mobile');assert.ok(s.anchors.deck.w>=35&&s.anchors.grave.w>=35);
+ const id=s.hits.filter(x=>x.id.startsWith('hand-')).at(-1).id;const pt=hitPoint(s,id);const cdp=await context.newCDPSession(page);await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:pt.x,y:pt.y}]});await page.waitForTimeout(570);await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});assert.equal((await snap(page)).aux,'detail');assert.equal(await page.evaluate(()=>window.getSelection().toString()),'');await capture(page,'detail-mobile');await click(page,'modal-close',true);
+ s=await snap(page);const h=s.hits.filter(x=>x.id.startsWith('hand-')).at(-1);const from=hitPoint(s,h.id),to=s.anchors.active;await page.mouse.move(from.x,from.y);await page.mouse.down();await page.mouse.move(from.x,from.y-35,{steps:5});await page.waitForTimeout(100);assert.equal((await snap(page)).dragging,+h.id.slice(5));await capture(page,'drag-mobile');await page.mouse.move(to.x,to.y,{steps:8});await page.mouse.up();for(let i=0;i<100;i++){s=await snap(page);if(s.game.phase==='play'&&!s.game.busy&&!s.choice)break;if(!await solve())await page.waitForTimeout(60)}s=await wait(page,s=>s.game?.phase==='play'&&!s.game.busy,'after drag play');assert.equal(s.dragging,null);assert.ok(s.trace.some(e=>e.type==='activation')||s.game.turn!==s.game.view||s.game.players.some(p=>p.ap===0));await click(page,'log',true);assert.equal((await snap(page)).aux,'log');await capture(page,'log-mobile');await click(page,'modal-close',true);assert.deepEqual(errors,[]);await context.close();console.log('PASS real Phaser touch long press, parallel selection, drag and turn progression, log');
+ // CPU reactions must never be animated from a local hand slot.
+ const cpu=await open(1280,800,1);const p=cpu.page;await click(p,'settings');await click(p,'speed-4');await click(p,'setting-reduced');await click(p,'master-0');await click(p,'settings-done');await click(p,'room');await click(p,'start');for(let i=0;i<100;i++){let ss=await snap(p);if(ss.choice){if(ss.choice.kind==='ability'){await click(p,'choice-0');await click(p,'choice-confirm')}else if(ss.choice.kind==='card'){const hh=ss.hits.find(x=>x.id.startsWith('hand-')&&ss.choice.options.some(o=>String(o.v)===x.id.slice(5)));if(hh){await click(p,hh.id);await click(p,'target-confirm')}else if(ss.hits.some(x=>x.id==='choice-none'))await click(p,'choice-none')}else if(ss.choice.kind==='player'){await click(p,ss.hits.find(x=>x.id.startsWith('seat-')).id);await click(p,'target-confirm')}else break}else if(ss.game?.phase==='play'&&!ss.game.busy){if(ss.trace.some(t=>t.player!==t.view&&t.source.zone==='hand'))break;await click(p,'end-turn')}else await p.waitForTimeout(60)}let ss=await snap(p);const hidden=ss.trace.filter(t=>t.player!==t.view&&t.source.zone==='hand');assert.ok(hidden.length,'no hidden hand activation observed');for(const t of hidden){assert.ok(t.from&&t.to);assert.ok(t.from.y<ss.H-100,'other player flight originated at local hand');}await capture(p,'battle-desktop');assert.deepEqual(cpu.errors,[]);await cpu.context.close();console.log('PASS hidden player activation origin');
 }finally{await browser.close()}
