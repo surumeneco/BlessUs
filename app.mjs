@@ -1,4 +1,4 @@
-import {Game,T,E,V,A,labelsE,describe,formatCard,effectLabel} from './engine.mjs';
+import {Game,T,E,V,A,labelsE,describe,formatCard,effectLabel} from './engine.mjs?v=20261125-mobile-1';
 
 // Presentation only: the rules engine owns all gameplay mutations and the resolution queue.
 const $=id=>document.getElementById(id), app=$('app'), layer=$('dialog'), tip=$('tooltip'), ghost=$('dragGhost');
@@ -27,7 +27,8 @@ const orb=(id,cls='')=>`<span class="orb ${cls}" style="--pc:${COLORS[id%COLORS.
 const name=id=>'P'+(id+1);
 const getSaved=(key,fallback)=>{try{return JSON.parse(localStorage.getItem(key))??fallback}catch{return fallback}};
 const writeSaved=(key,val)=>{try{localStorage.setItem(key,JSON.stringify(val));return true}catch{return false}};
-let decks=getSaved('bless-us-decks-v1',[]).filter(d=>typeof d?.name==='string'&&Array.isArray(d.cards)).slice(0,100);
+const storedDecks=getSaved('bless-us-decks-v1',[]);
+let decks=(Array.isArray(storedDecks)?storedDecks:[]).filter(d=>typeof d?.name==='string'&&Array.isArray(d.cards)).slice(0,100);
 const defaults={master:70,bgm:0,se:45,speed:1,shake:true,reduced:false,overlap:true};
 let settings={...defaults,...getSaved('bless-us-settings-v1',{})};
 let modes=['human','cpu','cpu','cpu'], room={rounds:3,hp:10,chance:25,deckId:'default',seed:''};
