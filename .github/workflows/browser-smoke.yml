@@ -10,6 +10,10 @@ jobs:
   viewport:
     runs-on: ubuntu-24.04
     timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [small, wide, game, cpu]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -26,11 +30,11 @@ jobs:
           node native-test.mjs
           node --check app.mjs
           node --check presentation.mjs
-          node browser-test.mjs
+          BLESS_BROWSER_SUITE=${{ matrix.suite }} node browser-test.mjs
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: bless-native-browser-evidence
+          name: bless-native-browser-evidence-${{ matrix.suite }}
           path: |
             screenshots/
             node_modules/phaser/dist/phaser.min.js
