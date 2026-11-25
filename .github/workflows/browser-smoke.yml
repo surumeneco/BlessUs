@@ -28,6 +28,7 @@ jobs:
           node prototype-test.mjs
           node feedback-test.mjs
           node native-test.mjs
+          node polish-test.mjs
           node --check app.mjs
           node --check presentation.mjs
           BLESS_BROWSER_SUITE=${{ matrix.suite }} node browser-test.mjs
