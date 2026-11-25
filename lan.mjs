@@ -76,7 +76,7 @@ export function installLan(Controller,{newProfile,cleanName,createCpuPolicy,PART
  P.connectRoom=async function(m){
  if(m.waiting)return;m.error=null;m.waiting=true;this.render();let n;
  try{
- const id=await roomPeerId(m.pass);if(this.aux.at(-1)!==m)return;
+ const id=await roomPeerId(m.pass);if(this.aux.at(-1)!==m){m.waiting=false;return}
  const PeerCtor=globalThis.Peer??globalThis.peerjs?.Peer;if(typeof PeerCtor!=='function')throw Error('通信ライブラリを読み込めませんでした');
  const name=cleanName(m.name);if(!name)throw Error('名前を入力してください');
  const profile={...this.profiles[0],humanName:name};this.stopNetwork();
@@ -85,7 +85,7 @@ export function installLan(Controller,{newProfile,cleanName,createCpuPolicy,PART
  n.fail=fail;const peer=n.peer=m.role==='host'?new PeerCtor(id,{config:{iceServers:[]}}):new PeerCtor({config:{iceServers:[]}});
  n.timer=setTimeout(()=>fail('接続がタイムアウトしました'),15000);
  peer.on('error',e=>fail(e.type==='unavailable-id'?'その合言葉のルームが既に存在します':e.type==='peer-unavailable'?'ルームが見つかりません':'接続できませんでした'));
- peer.on('open',()=>{if(this.net!==n)return;if(n.role==='host'){this.modes=['human','cpu','cpu','cpu'];this.profiles=[profile,...[1,2,3].map(newProfileSafe)];n.ready=true;clearTimeout(n.timer);this.go('room');n.interval=setInterval(()=>this.broadcast(),150)}else{const conn=n.conn=peer.connect(id,{reliable:true,serialization:'binary'});conn.on('open',()=>conn.send({type:'join',name,appearance:profile.appearance}));conn.on('data',msg=>{if(this.net!==n)return;if(msg?.type==='error'){if(!n.ready)fail(msg.message);else this.notify(msg.message);return}if(msg?.type==='state'){clearTimeout(n.timer);n.ready=true;this.receiveState(msg)}else if(msg?.type==='visual'&&n.ready)this.animateRemote(msg.event)});conn.on('close',()=>fail('ホストとの接続が切断されました'));conn.on('error',()=>fail('ホストとの接続に失敗しました'))}});
+ peer.on('open',()=>{if(this.net!==n)return;if(n.role==='host'){this.modes=['human','cpu','cpu','cpu'];this.profiles=[profile,...[1,2,3].map(newProfileSafe)];n.ready=true;clearTimeout(n.timer);this.go('room');n.interval=setInterval(()=>{this.heartbeat();this.broadcast()},150)}else{const conn=n.conn=peer.connect(id,{reliable:true,serialization:'binary'});conn.on('open',()=>conn.send({type:'join',name,appearance:profile.appearance}));conn.on('data',msg=>{if(this.net!==n)return;n.lastSeen=Date.now();if(msg?.type==='ping'){if(conn.open)conn.send({type:'pong'});return}if(msg?.type==='error'){if(!n.ready)fail(msg.message);else this.notify(msg.message);return}if(msg?.type==='state'){clearTimeout(n.timer);if(!n.ready)n.interval=setInterval(()=>this.heartbeat(),1000);n.ready=true;this.receiveState(msg)}else if(msg?.type==='visual'&&n.ready)this.animateRemote(msg.event)});conn.on('close',()=>fail('ホストとの接続が切断されました'));conn.on('error',()=>fail('ホストとの接続に失敗しました'))}});
  peer.on('connection',conn=>{if(this.net!==n||n.role!=='host'){conn.close();return}this.hostConnection(n,conn)});
  }catch(e){if(n&&this.net===n)this.stopNetwork();m.waiting=false;m.error=e.message;this.render()}
  };
@@ -102,8 +102,8 @@ export function installLan(Controller,{newProfile,cleanName,createCpuPolicy,PART
  const result=classifyJoin(records,name,this.page!=='room',this.modes.length);if(result.error){reject(result.error);return}
  if(result.resume){member=result.resume.record;member.connected=true;member.conn=conn;const id=this.profiles.indexOf(member.profile);this.modes[id]=member.mode;if(this.g&&this.page!=='room'){if(member.mode==='human')this.g.humanPlayers.add(id);else this.g.humanPlayers.delete(id)}}
  else{const profile=newProfile(this.profiles.length);profile.humanName=name;profile.appearance=this.validAppearance(msg.appearance,profile.appearance);this.profiles.push(profile);this.modes.push('human');member={profile,connected:true,conn,mode:'human'};n.members.push(member)}
- if(result.resume){this.notify(member.profile.humanName+' が再接続しました');this.broadcast(true)}else{this.render();this.broadcast(true)}return}
- if(member.conn!==conn||!member.connected)return;this.hostAction(member,msg)});
+ member.lastSeen=Date.now();member.lastPing=0;member.onLost=closedFn;if(result.resume){this.notify(member.profile.humanName+' が再接続しました');this.broadcast(true)}else{this.render();this.broadcast(true)}return}
+ if(member.conn!==conn||!member.connected)return;member.lastSeen=Date.now();if(msg.type==='pong')return;this.hostAction(member,msg)});
  };
  P.validAppearance=function(a,def){return Object.fromEntries(Object.entries(PARTS).map(([key,values])=>[key,Number.isInteger(a?.[key])&&a[key]>=0&&a[key]<values.length?a[key]:def[key]]))};
  P.uniqueName=function(name,id){return !this.profiles.some((p,i)=>i!==id&&this.isMember(i)&&normalizedName(p.humanName)===normalizedName(name))};
@@ -120,6 +120,7 @@ export function installLan(Controller,{newProfile,cleanName,createCpuPolicy,PART
  if(msg.type==='play'){const c=this.g.p[id].hand.find(c=>c.id===msg.card);if(c&&this.g.playable(c))this.run(()=>this.g.play(c.id))}
  else if(msg.type==='end')this.run(()=>this.g.endTurn());
  };
+ P.heartbeat=function(){const n=this.net;if(!n?.ready)return;const now=Date.now();if(n.role==='guest'){if(now-(n.lastSeen??now)>10000)n.fail('ホストとの通信が途絶えました');return}for(const m of n.members){if(!m.connected)continue;if(now-(m.lastSeen??now)>10000){const conn=m.conn;m.onLost?.();conn?.close();continue}if(now-(m.lastPing??0)>1000&&m.conn?.open){m.lastPing=now;try{m.conn.send({type:'ping'})}catch{}}}};
  P.broadcast=function(force=false){
  const n=this.net;if(n?.role!=='host'||!n.ready)return;
  const memberIds=[0,...n.members.map(m=>this.profiles.indexOf(m.profile))],disconnected=n.members.filter(m=>!m.connected).map(m=>this.profiles.indexOf(m.profile));
@@ -154,7 +155,7 @@ export function installLan(Controller,{newProfile,cleanName,createCpuPolicy,PART
  g.onVisual=e=>{emit(e);this.sendVisual(id=>visualView(e,id))};
  g.onActivation=async info=>{if(info)this.sendVisual(()=>({type:'activation',activation:publicActivation(info)}));return activate(info)};
  };
- P.sendVisual=function(project){if(this.net?.role!=='host')return;for(const m of this.net.members){if(!m.connected||!m.conn?.open)continue;const id=this.profiles.indexOf(m.profile),event=project(id);if(event)try{m.conn.send({type:'visual',event})}catch{}}};
+ P.sendVisual=function(project){if(this.net?.role!=='host')return;for(const m of this.net.members){if(!m.connected||!m.conn?.open)continue;const id=this.profiles.indexOf(m.profile),event=project(id);if(event)try{m.conn.send({type:'visual',event:copy(event)})}catch{}}};
  P.animateRemote=function(e){
  if(!e||this.page!=='battle'||!this.g)return;
  const u=this.ui,at=id=>u.anchors.get('seat:'+id),ms=this.dur(650),back={kind:'event',event:0},jobs=[];
