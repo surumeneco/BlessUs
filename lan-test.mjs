@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {webcrypto} from 'node:crypto';
-import {roomPeerId,classifyJoin,playerView,hydrateView,choiceView,hydrateChoice} from './lan.mjs';
+import {roomPeerId,classifyJoin,playerView,hydrateView,choiceView,hydrateChoice,visualView} from './lan.mjs';
 import {Game} from './engine.mjs';
 assert.equal(await roomPeerId('祝福のねこ123',webcrypto),await roomPeerId('祝福のねこ123',webcrypto));
 assert.equal(await roomPeerId('か\u3099',webcrypto),await roomPeerId('が',webcrypto));
@@ -17,3 +17,11 @@ const h=hydrateView(v,1);assert.equal(h.deck.length,g.deck.length);
 const c=hydrateChoice(choiceView({id:1,token:3,prompt:'選択',context:{kind:'player'},opts:[{v:g.p[0],label:'P1'}]}),h);
 assert.equal(c.opts[0].v,h.p[0]);assert.equal(c.opts[0].v.hand[0],null);
 console.log('PASS LAN room identification, reconnect classification, private state and choice hydration');
+
+const hidden={type:'move',reason:'draw',card:g.p[0].hand[0],from:{zone:'deck'},to:{zone:'hand',player:0}};
+assert.equal(visualView(hidden,1).card,null);assert.deepEqual(visualView(hidden,0).card,hidden.card);
+const privateFusion={type:'fusion',player:0,card:hidden.card,material:g.p[1].hand[0]};
+assert.equal(visualView(privateFusion,1).card,undefined);
+const disconnectedVote=new Game({players:2,humanPlayers:[0,1]},async id=>id===1?null:null);
+await disconnectedVote.vote();assert.equal(disconnectedVote.votingResults.length,0);
+console.log('PASS animation privacy and disconnected voter skip');
