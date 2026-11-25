@@ -32,10 +32,24 @@ async function verifyRows(effects,{repeat=false,replay=false}={}){
  const g=new Game({players:3},async(_,q,opts)=>opts.find(o=>o.v===g.p[1])??opts[0]);g.deck=[];g.grave=[];g.round=1;g.phase='play';const p=g.p[0],c=g.action(0,replay?10:effects[0].id);
  c.e=replay?[{id:10,n:1}]:effects.map(e=>({...e}));p.hand=[c];if(replay)g.history=[{id:100,e:effects}];if(repeat){p.abilities=[6];g.rnd=()=>0}
  for(let i=0;i<12;i++)g.deck.push(g.action(0,2));
- const frames=[],waits=[],controller={events:[],render(){},delay(n){waits.push(n)},dur:n=>n,ui:{anchors:new Map(),pulseCount(){},effectResult(){}},async flush(row){assert.equal(row,true);if(this.events.length)frames.push(this.events.splice(0))}};
+ const frames=[],waits=[],controller={events:[],checkGame(game){assert.equal(game,g)},render(){},delay(n){waits.push(n)},dur:n=>n,ui:{anchors:new Map(),pulseCount(){},effectResult(){}},async flush(row){assert.equal(row,true);if(this.events.length)frames.push(this.events.splice(0))}};
  bindRows.call(controller,g);g.onVisual=e=>{if(e.reason!=='resolved')controller.events.push(e)};
  await g.fire(c);return {g,frames,waits}
 }
 const row=await verifyRows([{id:0,n:3},{id:5,n:2},{id:8,n:3}]);assert.deepEqual(row.frames.map(f=>f.map(e=>e.type)),[['hp','hp','hp'],Array(6).fill('move'),Array(3).fill('ap')]);assert.equal(row.g.p[1].hp,7);assert.deepEqual(row.g.p.map(p=>p.hand.length),[2,2,2]);assert.equal(row.g.p[0].ap,3);assert.equal(row.waits.length,3);
 const repeated=await verifyRows([{id:1,n:3}],{repeat:true});assert.deepEqual(repeated.frames.map(f=>f.length),[6,6]);assert.deepEqual(repeated.g.p.map(p=>p.hp),[10,4,4]);
 const referenced=await verifyRows([{id:0,n:3},{id:2,n:2}],{replay:true});assert.deepEqual(referenced.frames.map(f=>f.length),[3,2]);assert.deepEqual(referenced.g.p.map(p=>p.hp),[12,7,10]);console.log('PASS real engine/UI hooks batch each row, ability repeat and replay separately without changing rule units');
+
+// Exercise the actual controller's lifecycle without a browser; the browser suite exercises UI and network.
+const ControllerForLifecycle=new Function('sleep',appSource.slice(appSource.indexOf('class Controller{'),appSource.indexOf('installLan(Controller,')).trim()+';return Controller;')(ms=>new Promise(r=>setTimeout(r,ms)));
+const lifecycle=()=>Object.assign(Object.create(ControllerForLifecycle.prototype),{g:{phase:'play'},page:'battle',busy:false,abort:false,pending:new Map(),hidden:new Set([1]),handOffsets:new Map(),aux:[],events:[1],generated:[1],trace:[1],ui:{cancel(){},clearAnimations(){}},scene:{cameras:{main:{resetFX(){}}}},render(){},go(page){this.page=page;this.aux=[]},flush(){this.flushCount=(this.flushCount??0)+1},cpu(){return false}});
+{
+ const c=lifecycle();let reject;const old=c.run(()=>new Promise((_,r)=>reject=r));c.pending.set(0,{reject});c.closeGame();await old;assert.equal(c.page,'room');assert.equal(c.busy,false);assert.equal(c.g,null);assert.equal(c.pending.size,0);assert.equal(c.hidden.size,0);assert.deepEqual(c.events,[]);
+}
+{
+ const c=lifecycle(),g=c.g;let release;const old=c.run(()=>new Promise(r=>release=r));c.closeGame();c.g={phase:'play'};c.abort=false;c.busy=true;c.page='battle';c.events=['new'];release();await old;assert.equal(c.busy,true);assert.equal(c.flushCount,undefined);assert.deepEqual(c.events,['new']);assert.throws(()=>c.checkGame(g),/対戦中断/);
+}
+{
+ const c=lifecycle();c.aux=[{}];const old=c.waitModal();c.closeGame();c.g={phase:'play'};c.abort=false;c.page='battle';await assert.rejects(old,/対戦中断/);
+}
+console.log('PASS abort resets room, stale run and modal cannot affect restarted match');
