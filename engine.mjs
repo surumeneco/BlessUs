@@ -11,7 +11,7 @@ const labelsE=['任意のプレイヤーにダメージ','他プレイヤー全�
 const describe=c=>c.kind==='power'?PT[c.t[0]][0]+' → '+c.e.map(({id,n})=>powerEffectLabel(id,n)).join(' / '):c.kind==='event'?'イベント：'+V[c.event]:c.t.map(i=>T[i]).join(' / ')+' → '+c.e.map(({id,n})=>labelsE[id]+(countE.has(id)?' ×'+n:'')).join(' / ');
 const effectLabel=(id,n=1)=>[`${n}ダメージを任意のプレイヤーに与える`,`${n}ダメージを他のプレイヤー全員に与える`,`${n}点分、自分の体力を増やす`,'任意のプレイヤーと体力を交換する',`${n}枚のカードを山札からドローする`,`${n}枚ずつ、全プレイヤーが山札からドローする`,`${n}枚まで、自分の手札からカードを捨てる`,`${n}枚のカードを任意のプレイヤーの手札からランダムに捨てる`,`${n}つのアクション権を獲得する`,'発動後に墓地へ行かず、手札に残る','前回発動したカードの効果を発動する',`${n}枚のカードを自分の手札から任意のプレイヤーに渡す`,'墓地のカードをすべて山札に戻し、シャッフルする',`ランダムな効果を${n}回発動する`,`${n}ダメージを自分に与える`,`${n}点分、任意のプレイヤーの体力を増やす`,`${n}枚のカードを任意のプレイヤーの手札からランダムに貰う`,`${n}枚ずつ、全プレイヤーが自身の手札からカードを選んで捨てる`,'任意のプレイヤーと手札を全て交換する',`${n}枚のカードを墓地から選んで自分の手札に加える`,'ターン進行順を逆にする','このターン中に自分が受けたダメージの合計と同じダメージを任意のプレイヤーに与える'][id];
 const cardEffectLabel=(id,n=1)=>[`${n}ダメージ与える`,`${n}ダメージ全体攻撃`,`${n}回復`,'体力を交換',`${n}枚ドロー`,`${n}枚全員ドロー`,`${n}枚まで捨てる`,`${n}枚ランダムに捨てさせる`,`${n}アクション獲得`,'手札に残る','前回発動したカード効果を発動',`${n}枚渡す`,'墓地を山札に戻す','ランダムな効果発動',`${n}ダメージを自分に与える`,`${n}回復させる`,`${n}枚ランダムに貰う`,`${n}枚ずつ全員が捨てる`,'手札を全て交換する',`${n}枚を墓地から手札に加える`,'ターン進行順を反転する','このターンに受けた分のダメージを与える'][id];
-const formatCard=c=>c.kind==='event'?'[イベント]\n'+V[c.event]:'[トリガー]\n'+c.t.map(i=>'・'+T[i]).join('\n')+'\n[効果]\n'+c.e.map(({id,n})=>'・'+cardEffectLabel(id,n)).join('\n');
+const formatCard=c=>c.kind==='power'?'[パワー]\n[トリガー]\n'+PT[c.t[0]][0]+'\n[効果]\n'+c.e.map(({id,n})=>'・'+powerEffectLabel(id,n)).join('\n'):c.kind==='event'?'[イベント]\n'+V[c.event]:'[トリガー]\n'+c.t.map(i=>'・'+T[i]).join('\n')+'\n[効果]\n'+c.e.map(({id,n})=>'・'+cardEffectLabel(id,n)).join('\n');
 const copy=x=>JSON.parse(JSON.stringify(x));
 class Game{
 constructor({players=4,rounds=3,hp=10,seed=1,deck=null,reviveChance=.25,humanPlayers=[],powerEnabled=false,powers=[]}={},choose=async(p,prompt,opts)=>opts[0]){
@@ -61,7 +61,7 @@ const matches=(p,c,t)=>{switch(t){case 0:return type==='use'&&c===card;case 1:re
 for(const p of this.order(g.origin)){for(let i=0;i<p.hand.length;i++){const c=p.hand[i];if(c.kind!=='action')continue;
 for(const t of c.t){const k=c.id+':'+t;if(!this.used.has(k)&&matches(p,c,t)){const entry={c,t,p:p.id,pos:i,seq:g.seq++,order:this.order(g.origin).map(x=>x.id)};if(g.lineEvents)g.lineEvents.push(entry);else this.registerReaction(g,entry)}}}
 const c=p.power;if(this.cfg.powerEnabled&&c&&powerMatches(p,c.t[0],type,subject,actor)&&!this.used.has(c.id+':'+c.t[0])){
-const entry={c,t:c.t[0],p:p.id,pos:p.hand.length,seq:g.seq++,order:this.order(g.origin).map(x=>x.id)};
+const entry={c,t:c.t[0],p:p.id,pos:Number.MAX_SAFE_INTEGER,seq:g.seq++,order:this.order(g.origin).map(x=>x.id)};
 if(g.lineEvents)g.lineEvents.push(entry);else this.registerReaction(g,entry)}
 }
 }
