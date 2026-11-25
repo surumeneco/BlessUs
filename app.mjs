@@ -1,8 +1,8 @@
-import {createCpuPolicy,chooseCpuOption,chooseCpuCard} from './cpu-policy.mjs?v=canvas-10';
-import {PARTS,newProfile,randomAppearance,cleanName} from './player-profile.mjs?v=canvas-10';
-import {logLayout,activationContext} from './log-layout.mjs?v=canvas-10';
-import {Game,T,E,V,effectLabel,describe} from './engine.mjs?v=canvas-10';
-import {Surface,C,COLORS,AB,ICON,EV,RATIO,total,cardRows,wrap,textWidth,rect,center} from './presentation.mjs?v=canvas-10';
+import {createCpuPolicy,chooseCpuOption,chooseCpuCard} from './cpu-policy.mjs?v=canvas-11';
+import {PARTS,newProfile,randomAppearance,cleanName} from './player-profile.mjs?v=canvas-11';
+import {logLayout,activationContext} from './log-layout.mjs?v=canvas-11';
+import {Game,T,E,V,effectLabel,describe} from './engine.mjs?v=canvas-11';
+import {Surface,C,COLORS,AB,ICON,EV,RATIO,total,cardRows,wrap,textWidth,rect,center} from './presentation.mjs?v=canvas-11';
 const clone=x=>JSON.parse(JSON.stringify(x)),sleep=ms=>new Promise(r=>setTimeout(r,ms)),clamp=(v,a,b)=>Math.min(b,Math.max(a,v));
 const read=(key,def)=>{try{return JSON.parse(localStorage.getItem(key))??def}catch{return def}};
 const save=(key,value)=>{try{localStorage.setItem(key,JSON.stringify(value));return true}catch{return false}};
