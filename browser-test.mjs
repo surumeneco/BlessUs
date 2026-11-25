@@ -36,6 +36,30 @@ try{
  await click(page,'back');await click(page,'confirm');await click(page,'settings');await click(page,'speed-4');await click(page,'setting-reduced');await click(page,'master-0');await click(page,'settings-done');await click(page,'room');await click(page,'start');await wait(page,s=>s.choice?.kind==='ability','vision ability');for(const type of ['none','protanopia','deuteranopia','tritanopia']){await cdp.send('Emulation.setEmulatedVisionDeficiency',{type});await capture(page,`vision-battle-${type}`)}await cdp.send('Emulation.setEmulatedVisionDeficiency',{type:'none'});assert.deepEqual(errors,[]);await context.close();console.log('PASS native input IME composition/commit and three color-vision simulations');
  }
  if(suite==='all'||suite==='profile'){
+ for(const [width,height,dpr] of [[393,740,3],[1280,800,1]]){
+  const {page,context,errors,mobile}=await open(width,height,dpr);
+  await click(page,'settings',mobile);await click(page,'power-setting',mobile);
+  assert.equal((await snap(page)).hits.find(h=>h.id==='power-confirm')?.disabled,true);
+  await click(page,'power-add',mobile);await click(page,'list-3',mobile);
+  assert.equal((await snap(page)).hits.find(h=>h.id==='power-confirm')?.disabled,true);
+  await click(page,'power-add',mobile);await click(page,'list-2',mobile);
+  assert.equal((await snap(page)).hits.find(h=>h.id==='power-confirm')?.disabled,false);
+  await capture(page,'power-editor-'+width);await click(page,'power-confirm',mobile);
+  assert.deepEqual((await snap(page)).profiles[0].power,{kind:'power',t:[5],e:[{id:3,n:1},{id:2,n:1}]});
+  await click(page,'settings-done',mobile);await click(page,'room',mobile);
+  assert.equal((await snap(page)).room.powerEnabled,false);assert.ok((await snap(page)).hits.some(h=>h.id==='room-power-0'));
+  if(!mobile){
+   await click(page,'room-power-toggle');assert.equal((await snap(page)).room.powerEnabled,true);
+   await click(page,'remove-3');await click(page,'remove-2');await click(page,'seed');await page.locator('.bless-native-input').fill('2');await click(page,'text-done');
+   await click(page,'start');await wait(page,s=>s.choice?.kind==='ability','power setup');
+   const state=await snap(page);assert.equal(state.game.players[0].power.kind,'power');assert.equal(state.game.players[1].power,null);
+   assert.ok(state.anchors['power:0']);assert.ok(state.hits.some(h=>h.id==='power-0'));await capture(page,'power-battle-'+width);
+  }
+  assert.deepEqual(errors,[]);await context.close();
+  console.log('PASS power configuration, validation, default and public display '+width);
+ }
+ }
+ if(suite==='all'||suite==='profile'){
  for(const [width,height,dpr] of [[393,740,3],[844,390,2]]){const {page,context,errors,mobile}=await open(width,height,dpr);await click(page,'room',mobile);const before=await snap(page);assert.equal(before.profiles.length,4);for(const p of before.profiles.filter(p=>p.mode==='cpu'))assert.match(p.name,/^[\u3041-\u3096\u30a1-\u30fa]{3,7}$/u);
  await click(page,'name-0',mobile);await page.locator('.bless-native-input').fill('こはく');await click(page,'text-done',mobile);assert.equal((await snap(page)).profiles[0].name,'こはく');await capture(page,`profile-room-${width}`);
  await click(page,'settings',mobile);await click(page,'appearance',mobile);assert.equal((await snap(page)).aux,'appearance');await capture(page,`profile-palette-${width}`);for(const part of ['color','eyes','mouth','accessory']){await click(page,'appearance-tab-'+part,mobile);const old=(await snap(page)).profiles[0].appearance[part],next=old===0?1:0;await click(page,'appearance-option-'+next,mobile);assert.equal((await snap(page)).profiles[0].appearance[part],next);await capture(page,`profile-${part}-${width}`)}const edited=(await snap(page)).profiles[0];await click(page,'appearance-done',mobile);await click(page,'settings-done',mobile);assert.deepEqual((await snap(page)).profiles[0],edited);assert.equal((await snap(page)).hits.find(h=>h.id==='mode-1')?.disabled,true);await click(page,'mode-0',mobile);assert.equal((await snap(page)).profiles[0].mode,'cpu');await click(page,'mode-0',mobile);assert.deepEqual((await snap(page)).profiles[0],edited);await click(page,'remove-1',mobile);assert.deepEqual((await snap(page)).profiles[0],edited);assert.equal((await snap(page)).profiles[1].name,before.profiles[2].name);
@@ -68,6 +92,10 @@ try{
    assert.equal((await snap(guest.page)).network.id,4);assert.equal((await snap(guest.page)).hits.find(h=>h.id==='start')?.disabled,true);
    for(const i of [3,2,1])await click(host.page,'remove-'+i);
    await wait(guest.page,s=>s.network.id===1&&s.profiles.length===2,'room compacted');
+   // Public power configuration is host-validated and synchronized.
+   await click(guest.page,'settings');await click(guest.page,'power-setting');await click(guest.page,'power-add');await click(guest.page,'list-5');await click(guest.page,'power-add');await click(guest.page,'list-7');await click(guest.page,'power-confirm');await click(guest.page,'settings-done');
+   await wait(host.page,s=>s.profiles[1].power?.e.length===2,'guest power sync');assert.equal((await snap(host.page)).room.powerEnabled,false);
+   await click(host.page,'room-power-toggle');await wait(guest.page,s=>s.room.powerEnabled===true,'room power toggle sync');
    // Fixed seed: no unrelated setup or turn-end target prompts in this transport test.
    await input(host.page,'seed','2');
    await click(host.page,'start');await wait(host.page,s=>s.choice?.kind==='ability','host ability');await wait(guest.page,s=>s.choice?.kind==='ability','guest ability');
@@ -75,14 +103,14 @@ try{
    const choiceState=await snap(host.page),choicePoint=hitPoint(choiceState,'choice-0');assert.ok(choiceState.hits.filter(h=>/^choice-\d+$/.test(h.id)).every(h=>!h.hasDetail));await host.page.mouse.move(choicePoint.x,choicePoint.y);await host.page.waitForTimeout(500);assert.deepEqual((await snap(host.page)).hoverText,[],'ability hover must not repeat inline text');await click(host.page,'choice-0');await click(host.page,'choice-confirm');
    await click(guest.page,'choice-0');await click(guest.page,'choice-confirm');
    let hs=await wait(host.page,s=>s.game?.phase==='play'&&!s.game.busy,'play synced'),gs=await wait(guest.page,s=>s.game?.phase==='play'&&!s.game.busy,'guest play synced');
-   assert.equal(hs.game.view,0);assert.equal(gs.game.view,1);assert.equal(gs.game.turn,hs.game.turn);assert.ok(gs.anchors['opponent-hand:0']);assert.ok(hs.anchors['opponent-hand:1']);
+   assert.equal(hs.game.players[1].power.kind,'power');assert.deepEqual(gs.game.players[1].power,hs.game.players[1].power);assert.equal(hs.game.view,0);assert.equal(gs.game.view,1);assert.equal(gs.game.turn,hs.game.turn);assert.ok(gs.anchors['opponent-hand:0']);assert.ok(hs.anchors['opponent-hand:1']);
    if(gs.game.turn===0){await endTurn(host.page);await wait(guest.page,s=>s.game?.turn===1&&!s.game.busy,'guest turn reached')}
    const dragId=await host.page.evaluate(()=>window.__blessTest.desktopFixture(1));await wait(guest.page,s=>s.game?.hand.some(c=>c.id===dragId)&&s.game.players[1].ap===2,'guest drag fixture synced');
    await slowDrag(guest.page,dragId,async()=>{const hp=await host.page.evaluate(()=>window.__blessTest.refreshFixture());await wait(guest.page,s=>s.game.players[0].hp===hp&&s.dragging===dragId,'state replaced during guest drag')});
    await wait(host.page,s=>s.game.players[1].ap===1&&!s.game.busy,'guest drag accepted');await wait(guest.page,s=>!s.game.hand.some(c=>c.id===dragId)&&!s.game.busy,'guest drag result synced');await endTurn(guest.page);await wait(host.page,s=>s.game?.turn===0&&!s.game.busy,'guest turn accepted');
-   await guest.context.close();await wait(host.page,s=>s.network.disconnected.includes(1)&&s.profiles[1].mode==='cpu','CPU takeover');
+   await guest.context.close();const takeover=await wait(host.page,s=>s.network.disconnected.includes(1)&&s.profiles[1].mode==='cpu','CPU takeover');assert.deepEqual(takeover.game.players[1].power,hs.game.players[1].power);
    resumed=await client();await join(resumed,false,'ゲスト');const restored=await wait(resumed.page,s=>s.page==='battle'&&s.profiles[1].mode==='human','reconnect');
-   assert.equal(restored.network.id,1);assert.equal(restored.profiles[1].name,'ゲスト');await wait(host.page,s=>!s.network.disconnected.length,'host sees reconnect');
+   assert.deepEqual(restored.game.players[1].power,hs.game.players[1].power);assert.equal(restored.network.id,1);assert.equal(restored.profiles[1].name,'ゲスト');await wait(host.page,s=>!s.network.disconnected.length,'host sees reconnect');
    await capture(resumed.page,'lan-reconnect');assert.deepEqual(host.errors,[]);assert.deepEqual(guest.errors,[]);assert.deepEqual(resumed.errors,[]);
    await host.context.close();await wait(resumed.page,s=>s.page==='home'&&!s.network,'host disconnect');
    console.log('PASS real WebRTC host/guest, per-client choices, turn request, CPU takeover, name reconnect and host loss');
