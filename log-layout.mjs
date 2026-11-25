@@ -12,3 +12,14 @@ export function logLayout(entries,activations,filter=()=>true){
  for(const trunk of [...trunks.values()].sort((a,b)=>a.lo-b.lo||b.hi-a.hi)){let lane=ends.findIndex(end=>end<trunk.lo);if(lane<0)lane=ends.length;ends[lane]=trunk.hi;for(const edge of trunk.edges)edge.lane=lane}
  return {rows,edges,lanes:ends.length};
 }
+
+// Select published activation snapshots by activation identity, not card identity or recency alone.
+export function activationContext(activations,current){
+ if(!current)return [];
+ const prior=activations.filter(a=>a.seq<current.seq);
+ const cause=prior.find(a=>a.seq===current.cause);
+ const cards=prior.filter(a=>a.card);
+ const items=cards.filter(a=>a.seq!==cause?.seq).slice(cause?-1:-2).map(a=>({activation:a,role:a.seq===cards.at(-1)?.seq?'直前':'履歴'}));
+ if(cause)items.unshift({activation:cause,role:'発動元'});
+ return items;
+}
