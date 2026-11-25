@@ -151,12 +151,13 @@ export function installLan(Controller,{newProfile,cleanName,createCpuPolicy,PART
  }
  };
  P.receiveState=function(msg){
- const n=this.net;if(n?.role!=='guest')return;if(msg.page==='error'){n.fail('ホスト側で対戦を続行できなくなりました');return}const first=n.id===0&&!n.received,oldPage=this.page,oldChoice=this.choice,oldFlow=this.flow,selectedIndex=oldChoice?.opts.indexOf(oldChoice.selected),oldCard=this.selected?.id;
+ const n=this.net;if(n?.role!=='guest')return;if(msg.page==='error'){n.fail('ホスト側で対戦を続行できなくなりました');return}const first=n.id===0&&!n.received,oldPage=this.page,oldActionSeq=n.actionSeq,oldChoice=this.choice,oldFlow=this.flow,selectedIndex=oldChoice?.opts.indexOf(oldChoice.selected),oldCard=this.selected?.id;
  n.received=true;n.actionSeq=msg.actionSeq;n.id=msg.id;n.memberIds=msg.memberIds;const previous=n.disconnected??[];n.disconnected=msg.disconnected;const dropped=n.disconnected.find(id=>!previous.includes(id)),returned=previous.find(id=>!n.disconnected.includes(id));if(n.received&&!first&&(dropped!==undefined||returned!==undefined)){const id=dropped??returned;this.notice=(msg.profiles[id]?.humanName??'プレイヤー')+(dropped!==undefined?' が切断しました（CPU代行）':' が再接続しました');clearTimeout(this.noticeTimer);this.noticeTimer=setTimeout(()=>{this.notice=null;this.render()},2200)}this.view=msg.id;this.modes=msg.modes;this.profiles=msg.profiles;this.room={...msg.room};this.busy=msg.busy;
  this.g=msg.game?hydrateView(msg.game,msg.id):null;this.choice=msg.choice&&this.g?hydrateChoice(msg.choice,this.g):null;this.pending.clear();if(this.choice){if(oldChoice?.token===this.choice.token){this.choice.selected=this.choice.opts[selectedIndex]??null;if(this.collapsedModal===oldChoice)this.collapsedModal=this.choice}else{this.collapsedModal=null;this.filter={type:'all',trigger:'all',effect:'all',sort:'complex'};this.ui.offsets.delete('choice');this.ui.offsets.delete('vote')}this.pending.set(msg.id,this.choice)}
  this.flow=msg.flow;if(oldFlow&&this.flow&&this.collapsedModal===oldFlow&&oldFlow.kind===this.flow.kind&&oldFlow.index===this.flow.index)this.collapsedModal=this.flow;
  this.selected=this.g?.p[msg.id].hand.find(c=>c.id===oldCard)??null;this.page=msg.page;this.winnerLarge=false;
  if(first||oldPage!==this.page){this.endNativeText();this.aux=[];this.ui.offsets.clear();this.collapsedModal=null}
+ if(this.drag){const current=this.g?.p[msg.id]?.hand.find(c=>c?.id===this.drag.c.id);if(oldActionSeq!==msg.actionSeq||!current||!this.canUse())this.ui.cancel();else this.drag.c=current}
  original.render.call(this);
  };
  P.render=function(){original.render.call(this);if(this.net?.role==='host'&&this.net.ready)this.broadcast()};
@@ -189,7 +190,7 @@ export function installLan(Controller,{newProfile,cleanName,createCpuPolicy,PART
  else if(e.type==='exchange')jobs.push(u.exchangeNumbers(at(e.players[0]),at(e.players[1]),e.before,ms));
  else if(e.type==='modify'||e.type==='fusion'){const where=at(e.player);if(where)jobs.push(u.floatText(e.type==='fusion'?'融合':'カード改変',where,ms));}
  else if(e.type==='eliminate'&&at(e.player))jobs.push(u.floatText('脱落',at(e.player),ms,C.muted));
- else if(e.type==='ability'&&at(e.player))jobs.push(u.floatText('アビリティ獲得',at(e.player),ms));
+ else if(e.type==='ability'&&at(e.player))jobs.push(u.attachIcon(e.ability,at(e.player),ms));
  else if(e.type==='ap'&&at(e.player))jobs.push(u.floatText('+1',at(e.player),ms,C.gold));
  else if(e.type==='notice')jobs.push(this.banner(e.text,650,null,C.muted));
  else if(e.type==='shuffle'){const from=this.anchor(e.from),to=this.anchor(e.to);if(from&&to)jobs.push(u.fly(back,from,to,ms,{back:true,reason:'shuffle'}))}
@@ -200,7 +201,7 @@ export function installLan(Controller,{newProfile,cleanName,createCpuPolicy,PART
  P.setChoice=function(c){this.collapsedModal=null;this.choice=c?.id===this.ownId()?c:null;this.view=this.ownId();this.selected=null;this.filter={type:'all',trigger:'all',effect:'all',sort:'complex'};this.ui.offsets.delete('choice');this.ui.offsets.delete('vote');this.render()};
  P.accept=function(o){const c=this.choice;if(!c||!c.opts.includes(o))return;if(this.isGuest()){this.send({type:'choice',token:c.token,index:c.opts.indexOf(o)});return}this.pending.delete(c.id);this.setChoice(null);c.resolve(o)};
  P.canUse=function(){return original.canUse.call(this)&&this.view===this.ownId()};
- P.use=function(c){if(this.isGuest()){if(this.canUse()&&this.g.p[this.view].hand.includes(c)&&this.g.playable(c))this.send({type:'play',card:c.id});return}original.use.call(this,c)};
+ P.use=function(c){if(this.isGuest()){const current=this.g?.p[this.view]?.hand.find(card=>card?.id===c.id);if(this.canUse()&&current&&this.g.playable(current))this.send({type:'play',card:current.id});return}original.use.call(this,c)};
  P.endAction=function(){if(!this.canUse())return;if(this.isGuest())this.send({type:'end'});else this.run(()=>this.g.endTurn())};
  P.closeGame=function(){if(this.isGuest()){this.go('home');return}return original.closeGame.call(this)};
  P.finishFlow=function(){if(this.isGuest()){this.collapsedModal=this.flow;this.render();return}original.finishFlow.call(this)};
