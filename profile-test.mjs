@@ -16,3 +16,17 @@ for(const [k,v] of choices)assert.equal(v.size,PARTS[k].length);assert.equal(PAL
 for(let seed=1;seed<=12;seed++){
  const ps=Array.from({length:4},(_,id)=>createCpuPolicy(seed,id));const g=new Game({players:4,rounds:3,seed},(id,prompt,opts,ctx)=>chooseCpuOption(g,id,prompt,opts,ctx,ps[id]));let steps=0;await g.startRound();while(g.phase!=='finished'&&steps++<4000){if(g.phase==='between')await g.startRound();else if(g.phase==='play'){const p=g.p[g.turn],c=chooseCpuCard(g,p,ps[p.id]);if(c&&p.ap>0)await g.play(c.id);else await g.endTurn()}else throw Error(`unexpected phase ${g.phase}`)}assert.equal(g.phase,'finished',`seed ${seed}: ${steps} operations`);assert.equal(g.round,3);console.log(`PASS CPU profiles complete 4-player 3-round game seed ${seed}, ${steps} operations`)
 }
+
+// Invoke the shared production renderer with a recording Graphics implementation.
+// Only the offscreen text-measurement context is stubbed during module import.
+globalThis.document={createElement:()=>({getContext:()=>({})})};
+const {Surface}=await import('./presentation.mjs');
+delete globalThis.document;
+for(const dead of [false,true])for(let color=0;color<PARTS.color.length;color++)for(let eyes=0;eyes<PARTS.eyes.length;eyes++)for(let mouth=0;mouth<PARTS.mouth.length;mouth++)for(let accessory=0;accessory<PARTS.accessory.length;accessory++){
+ const dots=[];let fill;const graphics={fillStyle(c){fill=c;return this},fillCircle(x,y,r){dots.push({x,y,r,fill});return this}};
+ for(const name of ['lineStyle','strokeCircle','fillEllipse','lineBetween','strokePoints','fillPoints','strokeEllipse'])graphics[name]=()=>graphics;
+ Surface.prototype.avatar.call({graphic:()=>graphics},100,100,50,{color,eyes,mouth,accessory},dead);
+ assert.deepEqual(dots[0],{x:100,y:100,r:50,fill:dead?0xb7b4bd:PALETTE[color]});
+ assert.ok(!dots.some(d=>Math.abs(d.y-111.5)<1e-8&&Math.abs(Math.abs(d.x-100)-33.5)<1e-8),'cheek decoration is present');
+}
+console.log('PASS shared avatar renderer has no cheek decoration in all 6048 live/dead appearance combinations');
