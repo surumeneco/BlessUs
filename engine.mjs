@@ -3,7 +3,7 @@ function makeEngine(){
 const T=['使用した時','捨てられた時','自分がダメージを受けた時','自分がダメージを与えた時','自分が体力を増やした時','他プレイヤーが体力を増やした時','自分がドローした時','他プレイヤーがドローした時','自分が手札を捨てた時','他プレイヤーが手札を捨てた時','自分のターン開始時','自分のターン終了時'];
 const E=['対象ダメージ','他全員ダメージ','自己回復','体力交換','自己ドロー','全員ドロー','自己捨札','対象ランダム捨札','アクション権','手札に残る','前回効果','手札譲渡','墓地を山札へ','ランダム効果'];
 const V=['コピー','削除','変更','追加'];
-const A=['初期体力+1','初期手札+1','初期トリガー追加','初期効果追加','終了時+1点','追加カード効果+1','効果2回(5%)','ターン終了時：他全員に1ダメージ（ラウンド限定）'];
+const A=['初期体力+1','初期手札+1','初期トリガー追加','初期効果追加','終了時+1点','追加カード効果+1','効果2回(25%)','ターン終了時：他全員に1ダメージ（ラウンド限定）'];
 const uniqueE=new Set([3,9,10,12]); // effects without quantities
 const countE=new Set([0,1,2,4,5,6,7,8,11,13]);
 const labelsE=['任意のプレイヤーにダメージ','他プレイヤー全員にダメージ','自分の体力を増やす','任意のプレイヤーと体力を交換','山札からドロー','全員がドロー','自分の手札を捨てる（任意）','対象のランダム手札を捨てる','アクション権獲得','発動後手札に残る','前回発動カードの効果を発動','手札を対象に渡す','墓地を山札に戻してシャッフル','ランダムな効果を発動'];
@@ -87,7 +87,7 @@ switch(c.event){case 0:x=await this.pickCard(p,'コピーする手札',other);if
 case 1:x=await this.pickCard(p,'削除する手札',other);if(x){p.hand.splice(p.hand.indexOf(x),1);this.move(x,{zone:'hand',player:p.id},{zone:'outside'},'delete');this.say('削除 #'+x.id)}break;
 case 2:case 3:x=await this.pickCard(p,'改変する手札',x=>x.kind==='action',false,{mode:c.event===2?'change':'add'});if(x)await this.modify(p,x,c.event===2?'change':'add');break}}
 async effects(p,e,g,ctx,prev,trail=[]){
-for(const [index,line] of e.entries()){let repeat=1;for(const a of p.abilities)if(a===6&&this.rnd()<.05){repeat++;this.say('効果追加発動(5%)')}
+for(const [index,line] of e.entries()){let repeat=1;for(const a of p.abilities)if(a===6&&this.rnd()<.25){repeat++;this.say('効果追加発動(25%)')}
 for(let r=0;r<repeat;r++)for(let i=0;i<line.n;i++){const path=[...trail,{kind:'line',id:line.id,index,total:e.length,unit:i+1,units:line.n,repeat:r+1,repeats:repeat,label:effectLabel(line.id)}];await this.reportEffect(path);await this.effect(p,line.id,g,ctx,prev,path);await this.onEffectApplied?.(this.active,path)}}}
 async effect(p,id,g,ctx,prev,path=[]){if([0,3,7,11].includes(id)&&!ctx.selected&&!ctx.target){ctx.target=await this.target(p,effectLabel(id),id);ctx.selected=true}let q=ctx.target;switch(id){
 case 0:if(q)this.hpChange(q,-1,p,g);break;
