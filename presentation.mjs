@@ -1,10 +1,11 @@
 import {PALETTE} from './player-profile.mjs?v=native-1';
-import {T,V,effectLabel,cardEffectLabel} from './engine.mjs?v=cards-2';
+import {T,V,effectLabel,cardEffectLabel} from './engine.mjs?v=power-1';
+import {PT,PE,powerEffectLabel,powerEffectDetail,powerScore} from './power.mjs';
 export const C={bg:0xf4f2fa,paper:0xfdfcff,ink:0x44364f,muted:0x766780,line:0xdad4e5,purple:0x7555b7,lav:0xeee6fa,teal:0x78cec8,table:0xa5dece,green:0x338b75,gold:0xc58b21,glow:0xa56be9,red:0xb45b40,greenInk:0x1d634e,goldInk:0x765013,redInk:0x8f3b29};
 export const COLORS=[0xb8a2eb,0x78cec8,0xf6a38e,0xf7c865,0x91b8ed,0xeaa7ca];
 export const AB=['ラウンド開始時の体力を1増加する。','ラウンド開始時の手札を1枚増やす。','ラウンド開始時の任意の手札1枚にランダムなトリガーを1つ追加する。','ラウンド開始時の任意の手札1枚にランダムな効果を1つ追加する。','ラウンド終了時に1ポイント獲得する。','ラウンド終了時にアクションカードを追加する時の効果が1つ増える。','25%の確率で効果が2回発動する（効果1行毎に判定）。','脱落中を含む自分のターン終了時に、他のプレイヤー全員に1ダメージ与える（ラウンド終了時に喪失）。'];
 export const EV=['手札のカードを1枚コピーする','手札のカードを1枚削除する','手札のアクションカード1枚のトリガーか効果を1つ変更する','手札のアクションカード1枚にトリガーか効果を1つ追加する'];
-export const total=c=>c.kind==='action'?c.t.length+c.e.reduce((a,x)=>a+x.n,0):0;
+export const total=c=>c.kind==='action'||c.kind==='power'?c.t.length+c.e.reduce((a,x)=>a+x.n,0):0;
 const tc=[0,4,1,1,2,2,3,3,4,4,5,5,0,4,6,6,6],ec=[1,1,2,2,3,3,4,4,0,0,6,4,6,6,1,2,4,4,4,4,5,1];
 export const moduleColors=[[0xe7dcf4,0x9471cb],[0xf8d9d2,0xc36d57],[0xd5ebde,0x338b75],[0xdaebf8,0x3983bc],[0xe9e5e8,0x806b80],[0xfaecc3,0xb68c24],[0xecdce9,0xa76695],[0xd0eee5,0x378f82]];
 export const RATIO=5/7;const CW=250,CH=350;
@@ -17,7 +18,8 @@ const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
 export const rect=(x,y,w,h)=>({x,y,w,h});export const center=r=>({x:r.x+r.w/2,y:r.y+r.h/2});
 const contains=(r,x,y)=>x>=r.x&&x<=r.x+r.w&&y>=r.y&&y<=r.y+r.h;
 const intersection=(a,b)=>{let x=Math.max(a.x,b.x),y=Math.max(a.y,b.y);return rect(x,y,Math.max(0,Math.min(a.x+a.w,b.x+b.w)-x),Math.max(0,Math.min(a.y+a.h,b.y+b.h)-y))};
-export const cardRows=(c,full=false)=>c.kind==='event'?[{head:'',text:V[c.event],color:7},{text:EV[c.event],color:7}]:[...c.t.map((t,i)=>({head:i===0?'トリガー':'',text:T[t],color:tc[t],trigger:t})),...c.e.map(({id,n},i)=>({head:i===0?'効果':'',text:(full?effectLabel:cardEffectLabel)(id,n),color:ec[id],effect:i}))];
+const ptc=[1,1,2,3,4,5,5,6,6,6,6,0,0,6,6,4,2,5,6,6];
+export const cardRows=(c,full=false)=>c.kind==='power'?[...c.t.map(t=>({head:'トリガー',text:PT[t][0],color:ptc[t],trigger:t})),...c.e.map(({id,n},i)=>({head:i===0?'効果':'',text:(full?powerEffectDetail:powerEffectLabel)(id,n),color:PE[id][2],effect:i}))]:c.kind==='event'?[{head:'',text:V[c.event],color:7},{text:EV[c.event],color:7}]:[...c.t.map((t,i)=>({head:i===0?'トリガー':'',text:T[t],color:tc[t],trigger:t})),...c.e.map(({id,n},i)=>({head:i===0?'効果':'',text:(full?effectLabel:cardEffectLabel)(id,n),color:ec[id],effect:i}))];
 export class Surface{
  constructor(scene,controller){this.s=scene;this.ctrl=controller;this.offsets=new Map();this.objects=[];this.hits=[];this.regions=[];this.anchors=new Map();this.clip=null;this.parent=null;this.z=0;this.hover=null;this.gesture=null;this.hold=null;this.detailNodes=[];this.animations=new Set();this.resize();
   scene.input.on('pointerdown',p=>this.down(p));scene.input.on('pointermove',p=>this.move(p));scene.input.on('pointerup',p=>this.up(p));scene.input.on('pointerupoutside',p=>this.cancel(p));scene.input.on('gameout',()=>{if(!this.gesture)this.clearDetail()});scene.input.on('wheel',(p,_,dx,dy)=>this.wheel(p,dx,dy));scene.input.keyboard?.on('keydown',e=>this.ctrl.key(e));
@@ -94,10 +96,10 @@ export class Surface{
  compactDetail(text,source,close){const {r,body,contentH,pad,size}=this.compactDetailLayout(text,source),oldZ=this.z,oldParent=this.parent;this.parent=null;this.z=1000;this.hit('modal-shade',rect(0,0,this.W,this.H),close);this.z=1001;this.hit('modal-panel',r,null);this.box(r,C.paper,C.purple,9,1.5);const inner=rect(r.x+pad,r.y+pad,r.w-pad*2,r.h-pad*2);if(contentH>inner.h)this.scroll('compact-detail',inner,inner.w,contentH,(x,y)=>this.text(body,x,y,size));else this.text(body,inner.x,inner.y,size);this.anchor('compact-detail',r);this.parent=oldParent;this.z=oldZ;return r}
  hoverDetail(detail,r){const prev=this.z,old=this.objects;this.objects=this.detailNodes;this.z=1800;const w=Math.min(250,this.W-20),h=Math.min(this.H-20,w/RATIO),cw=Math.min(w,h*RATIO);let x=r.x+r.w+8;if(x+cw>this.W-8)x=r.x-cw-8;if(x<8)x=clamp(r.x,8,this.W-cw-8);let y=clamp(r.y-h-8,8,this.H-h-8);if(detail.card){this.card(detail.card,rect(x,y,cw,cw/RATIO),{...detail.state,hover:true});}else if(detail.near){const {r:panel,body,pad,size}=this.compactDetailLayout(detail.text,r);this.box(panel,C.paper,C.purple,9);this.text(body,panel.x+pad,panel.y+pad,size)}else{const text=wrap(detail.text,w-20,14);const lines=text.split('\n').length*18;this.box(rect(x,clamp(r.y-lines-24,8,this.H-lines-24),w,lines+20),C.paper,C.purple);this.text(text,x+10,clamp(r.y-lines-24,8,this.H-lines-24)+8,14)}this.objects=old;this.z=prev;}
  // Card content uses one canonical coordinate system and one aspect ratio in every screen.
- card(c,r,state={}){const oldParent=this.parent;const container=this.s.add.container(r.x+r.w/2,r.y+r.h/2).setScale(r.w/CW);this.add(container);this.parent=container;const ev=c.kind==='event',count=total(c),level=count<=2?0:count<=4?1:count<=6?2:3,frame=ev?0x3c9b91:[0xa39daa,0x489fbd,0x9471cb,0xc59236][level],x=-CW/2,y=-CH/2;
+ card(c,r,state={}){const oldParent=this.parent;const container=this.s.add.container(r.x+r.w/2,r.y+r.h/2).setScale(r.w/CW);this.add(container);this.parent=container;const ev=c.kind==='event',count=total(c),level=count<=2?0:count<=4?1:count<=6?2:3,frame=c.kind==='power'?C.purple:ev?0x3c9b91:[0xa39daa,0x489fbd,0x9471cb,0xc59236][level],x=-CW/2,y=-CH/2;
  if(state.pending||state.active){for(let i=4;i>0;i--)this.box(rect(x-i*3,y-i*3,CW+i*6,CH+i*6),C.lav,C.glow,16,2)}if(state.selected||state.target||state.eligible)this.box(rect(x-5,y-5,CW+10,CH+10),state.selected?C.lav:0xd5ebde,state.selected?C.purple:C.green,14,3);
  this.box(rect(x,y,CW,CH),state.unavailable?0xececf0:ev?0xf2fffb:0xffffff,state.unavailable?0x9e9da5:frame,12,ev?3:2+level);if(level>=2&&!ev)this.box(rect(x+5,y+5,CW-10,CH-10),0xffffff,frame,9,1);
- this.box(rect(x+9,y+9,CW-18,26),ev?0xd0eee5:0xf0eaf4,null,5);this.text(ev?'イベント':`T${c.t.length} / E${c.e.reduce((a,b)=>a+b.n,0)}`,x+14,y+12,15,{bold:true});if(c.id!=null)this.text('#'+c.id,x+CW-13,y+12,14,{align:'right'});
+ this.box(rect(x+9,y+9,CW-18,26),ev?0xd0eee5:0xf0eaf4,null,5);this.text(c.kind==='power'?'パワー':ev?'イベント':`T${c.t.length} / E${c.e.reduce((a,b)=>a+b.n,0)}`,x+14,y+12,15,{bold:true});if(c.kind==='power')this.text('PS '+powerScore(c),x+CW-13,y+12,14,{align:'right'});else if(c.id!=null)this.text('#'+c.id,x+CW-13,y+12,14,{align:'right'});
  const rows=cardRows(c);let size=24,prepared,needed,pad,gap,headSize;do{pad=Math.max(1,size/8);gap=Math.max(.5,size/12);headSize=Math.min(16,size);prepared=rows.map(o=>({...o,lines:wrap(o.text,CW-42,size,true)}));needed=prepared.reduce((a,o)=>a+(o.head?headSize*1.5+gap:0)+o.lines.split('\n').length*(size*1.35+2)+2*pad+gap,0);if(needed<=CH-51||size<=6)break;size--}while(true);
  // Every module is rendered. If measured font metrics exceed the budget, compress the row group vertically, never drop rows.
  const body=this.s.add.container(0,y+43);this.add(body);this.parent=body;let yy=0;
