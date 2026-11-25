@@ -62,6 +62,8 @@ try{
    assert.equal((await snap(guest.page)).network.id,4);assert.equal((await snap(guest.page)).hits.find(h=>h.id==='start')?.disabled,true);
    for(const i of [3,2,1])await click(host.page,'remove-'+i);
    await wait(guest.page,s=>s.network.id===1&&s.profiles.length===2,'room compacted');
+   // Fixed seed: no unrelated setup or turn-end target prompts in this transport test.
+   await input(host.page,'seed','2');
    await click(host.page,'start');await wait(host.page,s=>s.choice?.kind==='ability','host ability');await wait(guest.page,s=>s.choice?.kind==='ability','guest ability');
    assert.equal((await snap(host.page)).choice.id,0);assert.equal((await snap(guest.page)).choice.id,1);
    await click(host.page,'choice-0');await click(host.page,'choice-confirm');
