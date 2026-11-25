@@ -30,9 +30,11 @@ assert.ok(classifyJoin([member],'新規',true,3).error);
 assert.ok(classifyJoin([],'新規',false,6).error);
 assert.equal(classifyJoin([],'新規',false,5).join,true);
 const g=new Game({players:3});g.p[0].hand=[g.action(0,1)];g.p[1].hand=[g.action(1,2)];
-const v=playerView(g,1);assert.deepEqual(v.p[0].hand,[null]);assert.deepEqual(v.p[1].hand,g.p[1].hand);assert.equal(v.deckCount,g.deck.length);assert.equal(v.deck,undefined);assert.equal(v.cfg.seed,undefined);
+g.direction=-1;
+const v=playerView(g,1);assert.equal(v.direction,-1);assert.deepEqual(v.p[0].hand,[null]);assert.deepEqual(v.p[1].hand,g.p[1].hand);assert.equal(v.deckCount,g.deck.length);assert.equal(v.deck,undefined);assert.equal(v.cfg.seed,undefined);
 const h=hydrateView(v,1);assert.equal(h.deck.length,g.deck.length);
 const c=hydrateChoice(choiceView({id:1,token:3,prompt:'選択',context:{kind:'player'},opts:[{v:g.p[0],label:'P1'}]}),h);
+const recovered=g.action(13,9);g.grave.push(recovered);const viewWithGrave=hydrateView(playerView(g,1),1);const graveChoice=hydrateChoice(choiceView({id:1,token:4,prompt:'墓地',context:{kind:'grave'},opts:[{v:recovered,label:'墓地'}]}),viewWithGrave);assert.equal(graveChoice.opts[0].v,viewWithGrave.grave.find(x=>x.id===recovered.id));
 assert.equal(c.opts[0].v,h.p[0]);assert.equal(c.opts[0].v.hand[0],null);
 console.log('PASS LAN room identification, reconnect classification, private state and choice hydration');
 

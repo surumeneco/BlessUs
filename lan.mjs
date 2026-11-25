@@ -36,7 +36,7 @@ export function classifyJoin(members,name,inMatch,count){
 const publicActivation=a=>a?copy(Object.fromEntries(['kind','player','card','trigger','label','cause','from','manual','progress','randomResults','seq','round','turn','targets','steps','references'].filter(k=>a[k]!==undefined).map(k=>[k,a[k]]))):null;
 export function playerView(g,id){
  const own=g.p[id],visible=new Set([...own.hand,...g.grave].map(c=>c.id));
- return {cfg:{rounds:g.cfg.rounds},round:g.round,phase:g.phase,turn:g.turn,seats:[...g.seats],deckCount:g.deck.length,grave:copy(g.grave),
+ return {cfg:{rounds:g.cfg.rounds},round:g.round,phase:g.phase,turn:g.turn,direction:g.direction,seats:[...g.seats],deckCount:g.deck.length,grave:copy(g.grave),
  p:g.p.map(p=>({id:p.id,hp:p.hp,dead:p.dead,score:p.score,ap:p.ap,abilities:[...p.abilities],roundScores:copy(p.roundScores),lastRank:p.lastRank,voteScore:p.voteScore,hand:p.id===id?copy(p.hand):Array(p.hand.length).fill(null)})),
  used:[...g.used].filter(k=>visible.has(Number(k.split(':')[0]))),events:[...g.events].filter(k=>visible.has(k)),
  pending:g.pendingCards().filter(c=>visible.has(c.id)).map(c=>c.id),
@@ -56,7 +56,7 @@ export function hydrateView(v,id){
 }
 export function hydrateChoice(v,g){
  if(!v)return null;
- return {...v,selected:null,opts:v.opts.map(o=>({...o,v:v.context?.kind==='player'?g.p[o.v.playerId]:v.context?.kind==='card'&&o.v?.id!=null?g.p[v.id].hand.find(c=>c.id===o.v.id)??o.v:o.v}))};
+ return {...v,selected:null,opts:v.opts.map(o=>({...o,v:v.context?.kind==='player'?g.p[o.v.playerId]:v.context?.kind==='card'&&o.v?.id!=null?g.p[v.id].hand.find(c=>c.id===o.v.id)??o.v:v.context?.kind==='grave'?g.grave.find(c=>c.id===o.v.id)??o.v:o.v}))};
 }
 
 // Presentation-only aggregation; never merge engine events or trigger/log entries.

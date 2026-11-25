@@ -1,11 +1,11 @@
 import {PALETTE} from './player-profile.mjs?v=native-1';
-import {T,V,effectLabel,cardEffectLabel} from './engine.mjs?v=native-1';
+import {T,V,effectLabel,cardEffectLabel} from './engine.mjs?v=cards-2';
 export const C={bg:0xf4f2fa,paper:0xfdfcff,ink:0x44364f,muted:0x766780,line:0xdad4e5,purple:0x7555b7,lav:0xeee6fa,teal:0x78cec8,table:0xa5dece,green:0x338b75,gold:0xc58b21,glow:0xa56be9,red:0xb45b40,greenInk:0x1d634e,goldInk:0x765013,redInk:0x8f3b29};
 export const COLORS=[0xb8a2eb,0x78cec8,0xf6a38e,0xf7c865,0x91b8ed,0xeaa7ca];
 export const AB=['ラウンド開始時の体力を1増加する。','ラウンド開始時の手札を1枚増やす。','ラウンド開始時の任意の手札1枚にランダムなトリガーを1つ追加する。','ラウンド開始時の任意の手札1枚にランダムな効果を1つ追加する。','ラウンド終了時に1ポイント獲得する。','ラウンド終了時にアクションカードを追加する時の効果が1つ増える。','25%の確率で効果が2回発動する（効果1行毎に判定）。','脱落中を含む自分のターン終了時に、他のプレイヤー全員に1ダメージ与える（ラウンド終了時に喪失）。'];
 export const EV=['手札のカードを1枚コピーする','手札のカードを1枚削除する','手札のアクションカード1枚のトリガーか効果を1つ変更する','手札のアクションカード1枚にトリガーか効果を1つ追加する'];
 export const total=c=>c.kind==='action'?c.t.length+c.e.reduce((a,x)=>a+x.n,0):0;
-const tc=[0,4,1,1,2,2,3,3,4,4,5,5],ec=[1,1,2,2,3,3,4,4,0,0,6,4,6,6];
+const tc=[0,4,1,1,2,2,3,3,4,4,5,5,0,4,6,6,6],ec=[1,1,2,2,3,3,4,4,0,0,6,4,6,6,1,2,4,4,4,4,5,1];
 export const moduleColors=[[0xe7dcf4,0x9471cb],[0xf8d9d2,0xc36d57],[0xd5ebde,0x338b75],[0xdaebf8,0x3983bc],[0xe9e5e8,0x806b80],[0xfaecc3,0xb68c24],[0xecdce9,0xa76695],[0xd0eee5,0x378f82]];
 export const RATIO=5/7;const CW=250,CH=350;
 const hex=n=>'#'+n.toString(16).padStart(6,'0');
