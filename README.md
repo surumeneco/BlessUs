@@ -39,6 +39,7 @@ node native-test.mjs
 node polish-test.mjs
 node balance-test.mjs
 node profile-test.mjs
+node turn-resolution-test.mjs
 node lan-test.mjs
 npm install --no-save --no-package-lock playwright@1.56.1 phaser@3.90.0 peerjs@1.5.5 peer@1.0.2
 npx playwright install chromium

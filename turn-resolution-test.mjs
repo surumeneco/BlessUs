@@ -29,3 +29,13 @@ await check('Ability repeat resolves full separate rows and preserves per-turn r
 await check('A player at nonpositive HP keeps AP and the round does not terminate early',async()=>{
  const g=blank(async(_,q,opts)=>opts[1]??opts[0]),[a,b,c]=g.p;a.ap=2;a.hp=1;b.hp=1;c.dead=true;c.hp=0;g.fallen=[c];const attack=g.action(0,0),heal=g.action(0,2);attack.e[0].n=2;a.hand=[attack,heal];await g.play(attack.id);assert.equal(g.phase,'play');assert.equal(a.ap,1);assert.equal(b.hp,-1);assert.equal(b.dead,false);await g.play(heal.id);assert.equal(g.phase,'finished');assert.equal(b.dead,true);assert.equal(b.hp,0);
 });
+
+await check('All-player damage row registers reactions after every unit for every target',async()=>{
+ const g=blank(),[a,b,c]=g.p,attack=g.action(0,1),healB=g.action(2,2),healC=g.action(2,2);attack.e[0].n=2;a.hand=[attack];b.hand=[healB];c.hand=[healC];const seen=[];g.onEffectApplied=(info,path)=>{if(info?.card.id===attack.id)seen.push([path[0].unit,b.hp,c.hp,g.pendingCards().map(x=>x.id)])};await g.fire(attack);assert.deepEqual(seen,[[1,9,9,[]],[2,8,8,[healB.id,healC.id]]]);await g.drain();assert.deepEqual([b.hp,c.hp],[9,9]);
+});
+await check('Direct previous-card replay honors referenced row and ability-repeat boundaries',async()=>{
+ const g=blank(async(_,q,opts)=>opts[1]),[a,b]=g.p,original=g.action(0,0),replay=g.action(0,10),heal=g.action(2,2);original.e[0].n=2;original.e.push({id:8,n:1});a.hand=[original,replay];await g.fire(original);await g.drain();b.hand=[heal];const seen=[];g.onEffectApplied=(info,path)=>{if(info?.card.id===replay.id&&path.length===2&&path[1].id===0)seen.push([path[1].unit,g.used.has(heal.id+':2')])};await g.fire(replay);assert.deepEqual(seen,[[1,false],[2,true]]);await g.drain();assert.equal(b.hp,7);
+});
+await check('Simultaneous eliminations use the existing turn order and emit no HP heal',async()=>{
+ const g=blank(),[a,b,c]=g.p;g.turn=1;a.hp=-1;b.hp=-2;c.hp=0;const seen=[];g.onVisual=e=>seen.push(e);await g.closeTurn();assert.deepEqual(g.fallen.map(p=>p.id),[1,2,0]);assert.ok(g.p.every(p=>p.dead&&p.hp===0));assert.deepEqual(seen.map(e=>e.type),['eliminate','eliminate','eliminate']);
+});
