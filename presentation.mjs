@@ -103,6 +103,8 @@ export class Surface{
  body.setScale(1,Math.min(1,(CH-51)/Math.max(1,yy-gap)));this.parent=container;
 
  if(state.selected){this.circle(CW/2-4,-CH/2+4,13,C.green);this.icon('check',CW/2-4,-CH/2+4,15,0xffffff)}if(state.unavailable)container.setAlpha(.64);if(state.alpha!=null)container.setAlpha(state.alpha);this.parent=oldParent;return container}
+ // A compact stack exposes the public hand count only, not individual cards or pending triggers.
+ handBacks(r,count,dead=false){const visible=Math.min(8,count);if(!visible)return;const g=this.graphic(),w=Math.min(r.w,r.h*RATIO),step=visible>1?Math.min(w*.55,(r.w-w)/(visible-1)):0,x=r.x+(r.w-w-step*(visible-1))/2;for(let i=0;i<visible;i++){const xx=x+i*step;g.fillStyle(dead?0x9996a0:0x9077c8,1).fillRoundedRect(xx,r.y,w,r.h,2);g.lineStyle(.8,0xffffff,1).strokeRoundedRect(xx,r.y,w,r.h,2);if(i===visible-1){const cx=xx+w/2,cy=r.y+r.h/2;g.lineStyle(1,0xffffff,1).lineBetween(cx-1.6,cy,cx+1.6,cy);g.lineStyle(1,0xffffff,1).lineBetween(cx,cy-1.6,cx,cy+1.6)}}return g}
  back(r,color=0xb8a2eb){const n=this.s.add.container(r.x+r.w/2,r.y+r.h/2);this.add(n);const old=this.parent;this.parent=n;this.box(rect(-r.w/2,-r.h/2,r.w,r.h),color,0xffffff,7,3);this.box(rect(-r.w/2+6,-r.h/2+6,r.w-12,r.h-12),color,0xf8f5ff,5,1.5);this.icon('sparkle',0,0,Math.min(32,r.w*.55),0xffffff);this.parent=old;return n}
  anchor(key,r){this.anchors.set(key,{...center(r),w:r.w,h:r.h});}
  tween(target,props,ms){return new Promise(resolve=>{let done=false;const finish=()=>{if(done)return;done=true;timer.remove(false);resolve()};const timer=this.s.time.delayedCall(Math.max(1,ms)+40,finish);this.s.tweens.add({targets:target,...props,duration:Math.max(1,ms),ease:'Sine.easeInOut',onComplete:finish})})}
