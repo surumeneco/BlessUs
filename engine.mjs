@@ -9,7 +9,8 @@ const countE=new Set([0,1,2,4,5,6,7,8,11,13]);
 const labelsE=['任意のプレイヤーにダメージ','他プレイヤー全員にダメージ','自分の体力を増やす','任意のプレイヤーと体力を交換','山札からドロー','全員がドロー','自分の手札を捨てる（任意）','対象のランダム手札を捨てる','アクション権獲得','発動後手札に残る','前回発動カードの効果を発動','手札を対象に渡す','墓地を山札に戻してシャッフル','ランダムな効果を発動'];
 const describe=c=>c.kind==='event'?'イベント：'+V[c.event]:c.t.map(i=>T[i]).join(' / ')+' → '+c.e.map(({id,n})=>labelsE[id]+(countE.has(id)?' ×'+n:'')).join(' / ');
 const effectLabel=(id,n=1)=>[`${n}ダメージを任意のプレイヤーに与える`,`${n}ダメージを他のプレイヤー全員に与える`,`${n}点分、自分の体力を増やす`,'任意のプレイヤーと体力を交換する',`${n}枚のカードを山札からドローする`,`${n}枚ずつ、全プレイヤーが山札からドローする`,`${n}枚まで、自分の手札からカードを捨てる`,`${n}枚のカードを任意のプレイヤーの手札からランダムに捨てる`,`${n}つのアクション権を獲得する`,'発動後に墓地へ行かず、手札に残る','前回発動したカードの効果を発動する',`${n}枚のカードを自分の手札から任意のプレイヤーに渡す`,'墓地のカードをすべて山札に戻し、シャッフルする',`ランダムな効果を${n}回発動する`][id];
-const formatCard=c=>c.kind==='event'?'[イベント]\n'+V[c.event]:'[トリガー]\n'+c.t.map(i=>'・'+T[i]).join('\n')+'\n[効果]\n'+c.e.map(({id,n})=>'・'+effectLabel(id,n)).join('\n');
+const cardEffectLabel=(id,n=1)=>[`${n}ダメージ与える`,`${n}ダメージ全体攻撃`,`${n}回復`,'体力を交換',`${n}枚ドロー`,`${n}枚全員ドロー`,`${n}枚まで捨てる`,`${n}枚ランダムに捨てさせる`,`${n}アクション獲得`,'手札に残る','前回発動したカード効果を発動',`${n}枚渡す`,'墓地を山札に戻す','ランダムな効果発動'][id];
+const formatCard=c=>c.kind==='event'?'[イベント]\n'+V[c.event]:'[トリガー]\n'+c.t.map(i=>'・'+T[i]).join('\n')+'\n[効果]\n'+c.e.map(({id,n})=>'・'+cardEffectLabel(id,n)).join('\n');
 const copy=x=>JSON.parse(JSON.stringify(x));
 class Game{
 constructor({players=4,rounds=3,hp=10,seed=1,deck=null,reviveChance=.25,humanPlayers=[]}={},choose=async(p,prompt,opts)=>opts[0]){
@@ -79,7 +80,7 @@ const g=this.group(p.id),prev=this.history.length-1,record={id:c.id,e:c.kind==='
 g.cause=this.active.seq;this.log.push('R'+this.round+' T'+this.turns+' P'+(p.id+1)+' 発動 #'+c.id+' '+describe(c));
 let stay=false;
 if(c.kind==='event'){this.events.add(c.id);await this.reportEffect([{label:V[c.event],kind:'event'}]);await this.eventEffect(p,c)}
-else{const ctx={target:null,selected:false,stay:false};await this.effects(p,record.e,g,ctx,prev);stay=ctx.stay}
+else{const ctx={stay:false};await this.effects(p,record.e,g,ctx,prev);stay=ctx.stay}
 const owner=this.owner(c);if(!stay){if(owner){owner.hand.splice(owner.hand.indexOf(c),1);this.grave.push(c)}else if(discardOwner&&this.deck.includes(c)){this.deck.splice(this.deck.indexOf(c),1);this.grave.push(c)}}const destination=this.location(c);this.move(c,{zone:'active',player:p.id},destination,'resolved',{stay});
 this.enqueue(g)})}
 async eventEffect(p,c){const other=x=>x!==c;let x;
@@ -87,8 +88,8 @@ switch(c.event){case 0:x=await this.pickCard(p,'コピーする手札',other);if
 case 1:x=await this.pickCard(p,'削除する手札',other);if(x){p.hand.splice(p.hand.indexOf(x),1);this.move(x,{zone:'hand',player:p.id},{zone:'outside'},'delete');this.say('削除 #'+x.id)}break;
 case 2:case 3:x=await this.pickCard(p,'改変する手札',x=>x.kind==='action',false,{mode:c.event===2?'change':'add'});if(x)await this.modify(p,x,c.event===2?'change':'add');break}}
 async effects(p,e,g,ctx,prev,trail=[]){
-for(const [index,line] of e.entries()){let repeat=1;for(const a of p.abilities)if(a===6&&this.rnd()<.25){repeat++;this.say('効果追加発動(25%)')}
-for(let r=0;r<repeat;r++)for(let i=0;i<line.n;i++){const path=[...trail,{kind:'line',id:line.id,index,total:e.length,unit:i+1,units:line.n,repeat:r+1,repeats:repeat,label:effectLabel(line.id)}];await this.reportEffect(path);await this.effect(p,line.id,g,ctx,prev,path);await this.onEffectApplied?.(this.active,path)}}}
+for(const [index,line] of e.entries()){const lineCtx={target:null,selected:false,stay:false};let repeat=1;for(const a of p.abilities)if(a===6&&this.rnd()<.25){repeat++;this.say('効果追加発動(25%)')}
+for(let r=0;r<repeat;r++)for(let i=0;i<line.n;i++){const path=[...trail,{kind:'line',id:line.id,index,total:e.length,unit:i+1,units:line.n,repeat:r+1,repeats:repeat,label:effectLabel(line.id)}];await this.reportEffect(path);await this.effect(p,line.id,g,lineCtx,prev,path);await this.onEffectApplied?.(this.active,path)}ctx.stay ||= lineCtx.stay}}
 async effect(p,id,g,ctx,prev,path=[]){if([0,3,7,11].includes(id)&&!ctx.selected&&!ctx.target){ctx.target=await this.target(p,effectLabel(id),id);ctx.selected=true}let q=ctx.target;switch(id){
 case 0:if(q)this.hpChange(q,-1,p,g);break;
 case 1:for(const x of this.order())if(x!==p)this.hpChange(x,-1,p,g);break;
@@ -100,10 +101,10 @@ case 6:{const x=await this.pickCard(p,'捨てる手札（任意）',()=>true,tru
 case 7:if(q&&q.hand.length)this.discard(q,q.hand[this.int(q.hand.length)],g);break;
 case 8:p.ap++;this.observe({type:'ap',player:p.id,value:p.ap});break;
 case 9:ctx.stay=true;break;
-case 10:if(prev>=0){const ref=this.history[prev];if(this.active)(this.active.references??=[]).push({path:copy(path),cardId:ref.id,e:copy(ref.e)});if(ref.e.length)await this.effects(p,ref.e,g,ctx,prev-1,path);else{this.say('前回のカードには効果がないため、発動しない');this.observe({type:'notice',text:'前回のカードには効果がありません'})}}else{this.say('前回の発動カードがないため、発動しない');this.observe({type:'notice',text:'前回の発動カードがありません'})}break;
+case 10:if(prev>=0){const ref=this.history[prev];if(this.active)(this.active.references??=[]).push({path:copy(path),cardId:ref.id,e:copy(ref.e)});if(ref.e.length){/* Replay the entire referenced card, not a single effect or a card activation. */await this.effects(p,ref.e,g,ctx,prev-1,path);}else{this.say('前回のカードには効果がないため、発動しない');this.observe({type:'notice',text:'前回のカードには効果がありません'})}}else{this.say('前回の発動カードがないため、発動しない');this.observe({type:'notice',text:'前回の発動カードがありません'})}break;
 case 11:if(q){const x=await this.pickCard(p,'渡す手札');if(x&&q!==p){p.hand.splice(p.hand.indexOf(x),1);q.hand.push(x);this.move(x,{zone:'hand',player:p.id},{zone:'hand',player:q.id},'transfer');this.say('P'+(p.id+1)+' からP'+(q.id+1)+' へカードを渡した')}}break;
 case 12:{const cards=this.grave.splice(0);this.deck=this.shuffle(this.deck.concat(cards));this.observe({type:'shuffle',count:cards.length,from:{zone:'grave'},to:{zone:'deck'}});break}
-case 13:{const random=this.int(E.length-1);const result={kind:'random',id:random,label:effectLabel(random)};this.say('ランダム効果 → '+result.label);if(this.active)this.active.randomResults.push(result);const next=[...path,result];await this.reportEffect(next);await this.effect(p,random,g,ctx,prev,next);break}
+case 13:{const random=this.int(E.length-1);const result={kind:'random',id:random,label:effectLabel(random)};this.say('ランダム効果 → '+result.label);if(this.active)this.active.randomResults.push(result);const next=[...path,result];await this.reportEffect(next);const randomCtx={target:null,selected:false,stay:false};await this.effect(p,random,g,randomCtx,prev,next);ctx.stay ||= randomCtx.stay;break}
 }}
 async startRound(){if(!['ready','between'].includes(this.phase))throw Error('ラウンド開始不可');this.round++;if(this.round===1)this.shuffle(this.seats);else this.seats.sort((a,b)=>this.p[a].score-this.p[b].score);this.turn=this.seats[0];this.turns=0;this.fallen=[];this.history=[];this.activations=[];this.resolvingEntries=[];this.pendingGroups.clear();this.active=null;this.lastActivation=null;this.used.clear();this.events.clear();this.queue=[];this.phase='setup';
 const ordered=this.order();await this.onRoundStart?.();const options=ordered.map(()=>this.opts(this.sample(A.map((_,i)=>i)),A));await Promise.all(ordered.map((p,i)=>this.ability(p,options[i])));await this.onAbilitiesChosen?.();for(const p of ordered){p.dead=false;p.ap=0;p.hp=this.cfg.hp+p.abilities.filter(a=>a===0).length}
@@ -143,6 +144,6 @@ this.phase='upgrade';await Promise.all(this.order().map(p=>this.upgradePlayer(p)
 const grave=this.grave.splice(0);this.deck.push(...grave);if(grave.length)this.observe({type:'shuffle',count:grave.length,from:{zone:'grave'},to:{zone:'deck'}});for(const p of this.p){const hand=p.hand.splice(0);this.deck.push(...hand);for(const c of hand)this.move(c,{zone:'hand',player:p.id},{zone:'deck'},'collect')}this.phase='between';}
 
 }
-return {Game,T,E,V,A,labelsE,describe,formatCard,effectLabel}
+return {Game,T,E,V,A,labelsE,describe,formatCard,effectLabel,cardEffectLabel}
 }
-export const {Game,T,E,V,A,labelsE,describe,formatCard,effectLabel}=makeEngine();
+export const {Game,T,E,V,A,labelsE,describe,formatCard,effectLabel,cardEffectLabel}=makeEngine();
