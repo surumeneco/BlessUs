@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {Game} from './engine.mjs';
-const blank=(choose=async(_,__,opts)=>opts[0])=>{const g=new Game({players:3,rounds:1},choose);g.deck=[];g.grave=[];g.phase='play';return g};
+const blank=(choose=async(_,__,opts)=>opts[0])=>{const g=new Game({players:3,rounds:1},choose);g.deck=[];g.grave=[];g.round=1;g.phase='play';return g};
 const check=async(label,fn)=>{await fn();console.log('PASS '+label)};
 await check('Discard trigger returns same card from grave to right end of hand',async()=>{
  const g=blank(),p=g.p[0],stay=g.action(1,9),other=g.action(0,2),group=g.group(0);p.hand=[stay,other];g.discard(p,stay,group);g.enqueue(group);assert.deepEqual(p.hand,[other]);await g.drain();assert.deepEqual(p.hand,[other,stay]);assert.ok(!g.grave.includes(stay));assert.equal(g.finalCards().filter(c=>c===stay).length,1);
