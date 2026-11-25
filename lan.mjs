@@ -1,5 +1,23 @@
 // LAN play: one host owns the engine; each guest receives only its own view.
 const copy=x=>JSON.parse(JSON.stringify(x));
+// STUN adds direct routes; no TURN relay is configured.
+export function peerOptions(){return {config:{iceServers:[{urls:'stun:stun.l.google.com:19302'}]}}}
+const networkLog=(role,event,details={})=>console.info('[Bless Us network]',role,event,details);
+export function observeConnection(conn,role){
+ const pc=conn.peerConnection;
+ const log=(event,details)=>networkLog(role,event,details);
+ log('datachannel-created');
+ if(pc){
+  const states=()=>({ice:pc.iceConnectionState,gathering:pc.iceGatheringState,connection:pc.connectionState,signaling:pc.signalingState});
+  for(const event of ['iceconnectionstatechange','icegatheringstatechange','connectionstatechange','signalingstatechange'])pc.addEventListener(event,()=>log(event,states()));
+  pc.addEventListener('icecandidate',e=>log('icecandidate',e.candidate?{type:e.candidate.type,protocol:e.candidate.protocol}:{complete:true}));
+  pc.addEventListener('icecandidateerror',e=>log('icecandidateerror',{code:e.errorCode}));
+  log('initial-state',states());
+ }
+ conn.on('open',()=>log('datachannel-open'));
+ conn.on('close',()=>log('datachannel-close'));
+ conn.on('error',e=>log('datachannel-error',{type:e?.type??e?.name??'unknown'}));
+}
 const passPattern=/^[\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}a-zA-Z0-9０-９Ａ-Ｚａ-ｚー]+$/u;
 export async function roomPeerId(value, crypto=globalThis.crypto){
  const normalized=String(value).normalize('NFC');
@@ -72,7 +90,7 @@ export function installLan(Controller,{newProfile,cleanName,createCpuPolicy,PART
  P.stopNetwork=function(){const n=this.net;this.net=null;if(n){clearTimeout(n.timer);clearInterval(n.interval);n.peer?.destroy()}};
  P.go=function(page){if(page==='home'&&this.net){this.abort=true;for(const c of this.pending.values())c.reject(Error('対戦中断'));this.pending.clear();this.flow?.resolve?.();this.resetRoom();this.abort=true}if(page==='room'&&this.isGuest()&&this.page==='result'){this.notify('ホストがルームへ戻るまでお待ちください');return}original.go.call(this,page)};
  P.drawMultiplayer=function(m){const u=this.ui;if(m.kind==='multi'){u.modal('みんなで遊ぶ',400,190,()=>this.close(),r=>{u.button('create-room','ルームを作成',rect(r.x,r.y,r.w,44),()=>{this.close();this.open('connect',{role:'host',name:this.profiles[0].humanName,pass:''})},{primary:true});u.button('join-room','ルームに参加',rect(r.x,r.y+54,r.w,44),()=>{this.close();this.open('connect',{role:'guest',name:this.profiles[0].humanName,pass:''})})});return}
- u.modal(m.role==='host'?'ルームを作成':'ルームに参加',450,255,()=>{this.stopNetwork();this.close()},(r,o)=>{u.button('network-name','名前：'+(m.name||'未入力'),rect(r.x,r.y,r.w,39),()=>this.editText('プレイヤー名',m.name,v=>{m.name=cleanName(v);this.render()}),{disabled:!!m.waiting});u.button('network-pass','合言葉：'+(m.pass||'未入力'),rect(r.x,r.y+48,r.w,39),()=>this.editText('合言葉',m.pass,v=>{m.pass=v;this.render()}),{disabled:!!m.waiting});u.text(m.error??(m.waiting?'接続中…':'同じLAN内で遊びます'),r.x,r.y+98,13,{width:r.w,color:m.error?C.redInk:C.muted});u.button('network-connect',m.role==='host'?'作成する':'参加する',rect(o.x+o.w-120,o.y+o.h-49,108,38),()=>this.connectRoom(m),{primary:true,disabled:!!m.waiting||!m.name||!m.pass})})};
+ u.modal(m.role==='host'?'ルームを作成':'ルームに参加',450,255,()=>{this.stopNetwork();this.close()},(r,o)=>{u.button('network-name','名前：'+(m.name||'未入力'),rect(r.x,r.y,r.w,39),()=>this.editText('プレイヤー名',m.name,v=>{m.name=cleanName(v);this.render()}),{disabled:!!m.waiting});u.button('network-pass','合言葉：'+(m.pass||'未入力'),rect(r.x,r.y+48,r.w,39),()=>this.editText('合言葉',m.pass,v=>{m.pass=v;this.render()}),{disabled:!!m.waiting});u.text(m.error??(m.waiting?'接続中…':'同じLAN内での直接通信を推奨します'),r.x,r.y+98,13,{width:r.w,color:m.error?C.redInk:C.muted});u.button('network-connect',m.role==='host'?'作成する':'参加する',rect(o.x+o.w-120,o.y+o.h-49,108,38),()=>this.connectRoom(m),{primary:true,disabled:!!m.waiting||!m.name||!m.pass})})};
  P.connectRoom=async function(m){
  if(m.waiting)return;m.error=null;m.waiting=true;this.render();let n;
  try{
@@ -82,11 +100,12 @@ export function installLan(Controller,{newProfile,cleanName,createCpuPolicy,PART
  const profile={...this.profiles[0],humanName:name};this.stopNetwork();
  n={role:m.role,members:[],id:0,pass:m.pass,ready:false,profile,localRoom:{...this.room},serial:0,modal:m};
  this.net=n;const fail=msg=>{if(this.net!==n)return;if(n.ready){if(n.role==='guest'){this.abort=true;this.resetRoom();this.go('home');this.notify(msg)}else this.notify(msg);return}this.stopNetwork();m.waiting=false;m.error=msg;this.render()};
- n.fail=fail;const peer=n.peer=m.role==='host'?new PeerCtor(id,{config:{iceServers:[]}}):new PeerCtor({config:{iceServers:[]}});
- n.timer=setTimeout(()=>fail('接続がタイムアウトしました'),15000);
- peer.on('error',e=>fail(e.type==='unavailable-id'?'その合言葉のルームが既に存在します':e.type==='peer-unavailable'?'ルームが見つかりません':'接続できませんでした'));
- peer.on('open',()=>{if(this.net!==n)return;if(n.role==='host'){this.modes=['human','cpu','cpu','cpu'];this.profiles=[profile,...[1,2,3].map(newProfileSafe)];n.ready=true;clearTimeout(n.timer);this.go('room');n.interval=setInterval(()=>{this.heartbeat();this.broadcast()},150)}else{const conn=n.conn=peer.connect(id,{reliable:true,serialization:'binary'});conn.on('open',()=>conn.send({type:'join',name,appearance:profile.appearance}));conn.on('data',msg=>{if(this.net!==n)return;n.lastSeen=Date.now();if(msg?.type==='ping'){if(conn.open)conn.send({type:'pong'});return}if(msg?.type==='error'){if(!n.ready)fail(msg.message);else this.notify(msg.message);return}if(msg?.type==='state'){clearTimeout(n.timer);if(!n.ready)n.interval=setInterval(()=>this.heartbeat(),1000);n.ready=true;this.receiveState(msg)}else if(msg?.type==='visual'&&n.ready)this.animateRemote(msg.event)});conn.on('close',()=>fail('ホストとの接続が切断されました'));conn.on('error',()=>fail('ホストとの接続に失敗しました'))}});
- peer.on('connection',conn=>{if(this.net!==n||n.role!=='host'){conn.close();return}this.hostConnection(n,conn)});
+ n.fail=fail;n.stage='signaling';networkLog(n.role,'signaling-start');
+ const peer=n.peer=m.role==='host'?new PeerCtor(id,peerOptions()):new PeerCtor(peerOptions());
+ n.timer=setTimeout(()=>{networkLog(n.role,'timeout',{stage:n.stage});fail('接続がタイムアウトしました（'+({signaling:'接続先登録',direct:'端末間通信',join:'ルーム応答'}[n.stage]??'接続')+'）')},30000);
+ peer.on('error',e=>{networkLog(n.role,'signaling-error',{type:e.type});fail(e.type==='unavailable-id'?'その合言葉のルームが既に存在します':e.type==='peer-unavailable'?'ルームが見つかりません':'接続できませんでした')});
+ peer.on('open',()=>{if(this.net!==n)return;networkLog(n.role,'signaling-open');if(n.role==='host'){this.modes=['human','cpu','cpu','cpu'];this.profiles=[profile,...[1,2,3].map(newProfileSafe)];n.ready=true;clearTimeout(n.timer);this.go('room');n.interval=setInterval(()=>{this.heartbeat();this.broadcast()},150)}else{n.stage='direct';const conn=n.conn=peer.connect(id,{reliable:true,serialization:'binary'});observeConnection(conn,n.role);conn.on('open',()=>{n.stage='join';networkLog(n.role,'join-sent');conn.send({type:'join',name,appearance:profile.appearance})});conn.on('data',msg=>{if(this.net!==n)return;n.lastSeen=Date.now();if(msg?.type==='ping'){if(conn.open)conn.send({type:'pong'});return}if(msg?.type==='error'){if(!n.ready)fail(msg.message);else this.notify(msg.message);return}if(msg?.type==='state'){clearTimeout(n.timer);if(!n.ready){networkLog(n.role,'join-accepted');n.interval=setInterval(()=>this.heartbeat(),1000)}n.ready=true;this.receiveState(msg)}else if(msg?.type==='visual'&&n.ready)this.animateRemote(msg.event)});conn.on('close',()=>fail('ホストとの接続が切断されました'));conn.on('error',()=>fail('ホストとの接続に失敗しました'))}});
+ peer.on('connection',conn=>{if(this.net!==n||n.role!=='host'){conn.close();return}observeConnection(conn,n.role);this.hostConnection(n,conn)});
  }catch(e){if(n&&this.net===n)this.stopNetwork();m.waiting=false;m.error=e.message;this.render()}
  };
  P.hostConnection=function(n,conn){
@@ -97,7 +116,7 @@ export function installLan(Controller,{newProfile,cleanName,createCpuPolicy,PART
  this.notify(member.profile.humanName+' が切断しました（CPU代行）')};
  conn.on('close',closedFn);conn.on('error',closedFn);
  conn.on('data',msg=>{if(this.net!==n||closed||!msg||typeof msg!=='object')return;
- if(!member){if(msg.type!=='join')return;const name=cleanName(msg.name??'');if(!name){reject('名前を入力してください');return}
+ if(!member){if(msg.type!=='join')return;networkLog(n.role,'join-received');const name=cleanName(msg.name??'');if(!name){reject('名前を入力してください');return}
  const records=[{name:this.profiles[0].humanName,connected:true,host:true},...n.members.map(m=>({name:m.profile.humanName,connected:m.connected,record:m}))];
  const result=classifyJoin(records,name,this.page!=='room',this.modes.length);if(result.error){reject(result.error);return}
  if(result.resume){member=result.resume.record;member.connected=true;member.conn=conn;const id=this.profiles.indexOf(member.profile);this.modes[id]=member.mode;if(this.g&&this.page!=='room'){if(member.mode==='human')this.g.humanPlayers.add(id);else this.g.humanPlayers.delete(id)}}
