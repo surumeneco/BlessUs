@@ -22,7 +22,7 @@ await test('all twenty trigger predicates, disabled, dead and once-per-turn',asy
   if(type==='damageSelf'){type='damage';actor=b}
   if(type==='damageOther'){type='damage';subject=b;actor=a}
   if(type==='otherEliminate'){type='eliminate';subject=b;b.dead=true}
-  if(type==='eliminate')a.dead=true;
+  if(t===19)a.dead=true;
   if(type==='roundStart')subject=null;
   const group=g.group(0);g.emit(group,type,subject,actor);g.emit(group,type,subject,actor);
   assert.equal(group.entries.filter(e=>e.c.kind==='power').length,1,'trigger '+t);
