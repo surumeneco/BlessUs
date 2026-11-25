@@ -59,6 +59,18 @@ export function hydrateChoice(v,g){
  return {...v,selected:null,opts:v.opts.map(o=>({...o,v:v.context?.kind==='player'?g.p[o.v.playerId]:v.context?.kind==='card'&&o.v?.id!=null?g.p[v.id].hand.find(c=>c.id===o.v.id)??o.v:o.v}))};
 }
 
+// Presentation-only aggregation; never merge engine events or trigger/log entries.
+export function combineLineVisuals(events){
+ const result=[],groups=new Map();
+ for(const e of events){
+  const key=e.type==='hp'&&e.presentation!=='exchange'?JSON.stringify(['hp',e.player,e.actor,Math.sign(e.value-e.old)]):e.type==='ap'?JSON.stringify(['ap',e.player]):null;
+  if(key===null){result.push(e);continue}
+  const prior=groups.get(key);
+  if(prior){if(e.type==='hp')prior.value+=e.value-e.old;else{prior.count+=(e.count??1);prior.value=e.value}}
+  else{const item={...e,...(e.type==='ap'?{count:e.count??1}:{})};groups.set(key,item);result.push(item)}
+ }
+ return result;
+}
 // Individual event projection: private cards and their IDs never leave the owner view.
 export function visualView(e,id){
  const location=l=>l?{zone:l.zone,...(l.player!==undefined?{player:l.player}:{}),...(l.player===id&&l.cardId!==undefined?{cardId:l.cardId}:{})}:null;
@@ -68,7 +80,7 @@ export function visualView(e,id){
   return {type:e.type,reason:e.reason,from:location(e.from),to:location(e.to),card:visible?copy(e.card):null};
  }
  if(e.type==='modify'||e.type==='fusion')return e.player===id?copy(e):{type:e.type,player:e.player,mode:e.mode};
- const keys={hp:['player','actor','old','value','presentation'],exchange:['players','before','after'],ability:['player','ability'],ap:['player'],eliminate:['player'],shuffle:['count','from','to'],notice:['text']}[e.type];
+ const keys={hp:['player','actor','old','value','presentation'],exchange:['players','before','after'],ability:['player','ability'],ap:['player','count'],eliminate:['player'],shuffle:['count','from','to'],notice:['text']}[e.type];
  return keys?copy(Object.fromEntries([['type',e.type],...keys.filter(k=>e[k]!==undefined).map(k=>[k,e[k]])])):null;
 }
 
@@ -172,12 +184,14 @@ export function installLan(Controller,{newProfile,cleanName,createCpuPolicy,PART
  P.bindGame=function(g){
  original.bindGame.call(this,g);
  const emit=g.onVisual,activate=g.onActivation;
- g.onVisual=e=>{emit(e);this.sendVisual(id=>visualView(e,id))};
+ g.onVisual=e=>{const kind=g.active?.progress?.at(-1)?.kind;if(kind==='line'||kind==='random')emit({...e,remoteDeferred:true});else{emit(e);this.sendVisual(id=>visualView(e,id))}};
  g.onActivation=async info=>{if(info)this.sendVisual(()=>({type:'activation',activation:publicActivation(info)}));return activate(info)};
  };
  P.sendVisual=function(project){if(this.net?.role!=='host')return;for(const m of this.net.members){if(!m.connected||!m.conn?.open)continue;const id=this.profiles.indexOf(m.profile),event=project(id);if(event)try{m.conn.send({type:'visual',event:copy(event)})}catch{}}};
+ P.publishVisuals=function(events){if(!events.length)return;this.sendVisual(id=>{const projected=events.map(({remoteDeferred,fromPoint,view,...e})=>visualView(e,id)).filter(Boolean);return projected.length?{type:'batch',events:projected}:null})};
  P.animateRemote=function(e){
  if(!e||this.page!=='battle'||!this.g)return;
+ if(e.type==='batch'){for(const event of e.events)this.animateRemote(event);return}
  const u=this.ui,at=id=>u.anchors.get('seat:'+id),ms=this.dur(650),back={kind:'event',event:0},jobs=[];
  if(e.type==='activation'){
  const a=e.activation,from=this.anchor(a.from,a.card?.id)??at(a.player),to=u.anchors.get('active');
@@ -191,7 +205,7 @@ export function installLan(Controller,{newProfile,cleanName,createCpuPolicy,PART
  else if(e.type==='modify'||e.type==='fusion'){const where=at(e.player);if(where)jobs.push(u.floatText(e.type==='fusion'?'融合':'カード改変',where,ms));}
  else if(e.type==='eliminate'&&at(e.player))jobs.push(u.floatText('脱落',at(e.player),ms,C.muted));
  else if(e.type==='ability'&&at(e.player))jobs.push(u.attachIcon(e.ability,at(e.player),ms));
- else if(e.type==='ap'&&at(e.player))jobs.push(u.floatText('+1',at(e.player),ms,C.gold));
+ else if(e.type==='ap'&&at(e.player))jobs.push(u.floatText('+'+(e.count??1),at(e.player),ms,C.gold));
  else if(e.type==='notice')jobs.push(this.banner(e.text,650,null,C.muted));
  else if(e.type==='shuffle'){const from=this.anchor(e.from),to=this.anchor(e.to);if(from&&to)jobs.push(u.fly(back,from,to,ms,{back:true,reason:'shuffle'}))}
  Promise.all(jobs).catch(()=>{});

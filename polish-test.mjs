@@ -24,3 +24,18 @@ await branchGame.fire(branchGame.p[0].hand[0]);await branchGame.drain();const [r
 assert.deepEqual(activationContext(branchGame.activations,b1).map(x=>[x.activation.seq,x.role]),[[root.seq,'発動元']]);assert.deepEqual(activationContext(branchGame.activations,root),[]);
 const reuse={...b3,seq:5,card:root.card,cause:root.seq};assert.equal(activationContext([...branchGame.activations,reuse],reuse)[0].activation.seq,root.seq);
 const ability={seq:6,kind:'ability',label:'能力'},child={...b3,seq:7,cause:6};assert.equal(activationContext([...branchGame.activations,ability,child],child)[0].activation,ability);console.log('PASS causal card survives older-than-recent branching, repeated card identity and ability source');
+
+// Bind the real UI hooks to a real engine; the engine still resolves units independently.
+const rowHooks=appSource.slice(appSource.indexOf('  g.onEffect=async info=>'),appSource.indexOf('  g.onUseWithoutTrigger=',appSource.indexOf('  g.onEffectApplied=')));
+const bindRows=new Function('g',rowHooks);
+async function verifyRows(effects,{repeat=false,replay=false}={}){
+ const g=new Game({players:3},async(_,q,opts)=>opts.find(o=>o.v===g.p[1])??opts[0]);g.deck=[];g.grave=[];g.round=1;g.phase='play';const p=g.p[0],c=g.action(0,replay?10:effects[0].id);
+ c.e=replay?[{id:10,n:1}]:effects.map(e=>({...e}));p.hand=[c];if(replay)g.history=[{id:100,e:effects}];if(repeat){p.abilities=[6];g.rnd=()=>0}
+ for(let i=0;i<12;i++)g.deck.push(g.action(0,2));
+ const frames=[],waits=[],controller={events:[],render(){},delay(n){waits.push(n)},dur:n=>n,ui:{anchors:new Map(),pulseCount(){},effectResult(){}},async flush(row){assert.equal(row,true);if(this.events.length)frames.push(this.events.splice(0))}};
+ bindRows.call(controller,g);g.onVisual=e=>{if(e.reason!=='resolved')controller.events.push(e)};
+ await g.fire(c);return {g,frames,waits}
+}
+const row=await verifyRows([{id:0,n:3},{id:5,n:2},{id:8,n:3}]);assert.deepEqual(row.frames.map(f=>f.map(e=>e.type)),[['hp','hp','hp'],Array(6).fill('move'),Array(3).fill('ap')]);assert.equal(row.g.p[1].hp,7);assert.deepEqual(row.g.p.map(p=>p.hand.length),[2,2,2]);assert.equal(row.g.p[0].ap,3);assert.equal(row.waits.length,3);
+const repeated=await verifyRows([{id:1,n:3}],{repeat:true});assert.deepEqual(repeated.frames.map(f=>f.length),[6,6]);assert.deepEqual(repeated.g.p.map(p=>p.hp),[10,4,4]);
+const referenced=await verifyRows([{id:0,n:3},{id:2,n:2}],{replay:true});assert.deepEqual(referenced.frames.map(f=>f.length),[3,2]);assert.deepEqual(referenced.g.p.map(p=>p.hp),[12,7,10]);console.log('PASS real engine/UI hooks batch each row, ability repeat and replay separately without changing rule units');
