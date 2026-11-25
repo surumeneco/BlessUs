@@ -49,3 +49,5 @@ async function verify(Game){
  return results
 }
 console.log((await verify(Game)).join('\n'));
+
+await import('./power-test.mjs');
