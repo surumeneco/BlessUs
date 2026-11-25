@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {Game} from './engine.mjs';
-import {logLayout} from './log-layout.mjs';
+import {logLayout,activationContext} from './log-layout.mjs';
 const entries=[{index:1,activation:10,root:true},{index:2,activation:10},{index:3,activation:20,root:true},{index:4,activation:30,root:true},{index:5,activation:20},{index:6,cause:10}];
 const acts=[{seq:10},{seq:20,cause:10},{seq:30,cause:10}];
 const graph=logLayout(entries,acts);assert.deepEqual(graph.rows.map(e=>e.index),[6,5,4,3,2,1]);assert.deepEqual(graph.rows.map(e=>e.parent),[1,3,1,1,1,null]);for(const a of graph.edges)for(const b of graph.edges)if(a!==b&&a.parent!==b.parent&&a.lane===b.lane)assert.ok(a.hi<b.lo||b.hi<a.lo);assert.equal(logLayout(entries,acts,e=>e.root).edges.length,2);console.log('PASS actual causal log edges, order, lane separation and filtered ancestors');
@@ -17,3 +17,10 @@ const hook=appSource.slice(appSource.indexOf('  g.onEffect=async info=>'),appSou
 const bind=new Function('g',hook);const shown=[];let release;
 const controller={render(){},dur:n=>n,ui:{anchors:new Map([['active',{x:150,y:200}]]),effectResult(label,at,ms){shown.push({label,at,ms});return new Promise(r=>{release=r})}},delay(){throw Error('unexpected candidate delay')}};
 const randomGame=new Game({players:2},async(_,q,o)=>{assert.equal(shown.length,1);assert.ok(released);return o[1]});const randomPlayer=randomGame.p[0],randomCard=randomGame.action(0,13);randomPlayer.hand=[randomCard];randomGame.int=()=>0;bind.call(controller,randomGame);let released=false;const running=randomGame.fire(randomCard);for(let i=0;i<20&&!release;i++)await Promise.resolve();assert.equal(shown.length,1);assert.equal(shown[0].label,'1ダメージを任意のプレイヤーに与える');assert.equal(shown[0].ms,650);assert.equal(randomGame.p[1].hp,10);released=true;release();await running;assert.equal(randomGame.p[1].hp,9);assert.ok(!palette.includes('rollEffect('));assert.ok(!palette.includes('効果を抽選中'));console.log('PASS random effect immediately presents its actual result, holds before target selection, and never rolls presentation candidates');
+
+// Actual branching chain: root A -> B, C, D. D's cause is older than two recent cards.
+const branchGame=new Game({players:4});branchGame.p[0].hand=[branchGame.action(0,1)];for(const player of branchGame.p.slice(1))player.hand=[branchGame.action(2,2)];
+await branchGame.fire(branchGame.p[0].hand[0]);await branchGame.drain();const [root,b1,b2,b3]=branchGame.activations;assert.equal(branchGame.activations.length,4);assert.equal(b3.cause,root.seq);assert.deepEqual(activationContext(branchGame.activations,b3).map(x=>[x.activation.seq,x.role]),[[root.seq,'発動元'],[b2.seq,'直前']]);
+assert.deepEqual(activationContext(branchGame.activations,b1).map(x=>[x.activation.seq,x.role]),[[root.seq,'発動元']]);assert.deepEqual(activationContext(branchGame.activations,root),[]);
+const reuse={...b3,seq:5,card:root.card,cause:root.seq};assert.equal(activationContext([...branchGame.activations,reuse],reuse)[0].activation.seq,root.seq);
+const ability={seq:6,kind:'ability',label:'能力'},child={...b3,seq:7,cause:6};assert.equal(activationContext([...branchGame.activations,ability,child],child)[0].activation,ability);console.log('PASS causal card survives older-than-recent branching, repeated card identity and ability source');
