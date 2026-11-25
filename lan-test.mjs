@@ -1,0 +1,27 @@
+import assert from 'node:assert/strict';
+import {webcrypto} from 'node:crypto';
+import {roomPeerId,classifyJoin,playerView,hydrateView,choiceView,hydrateChoice,visualView} from './lan.mjs';
+import {Game} from './engine.mjs';
+assert.equal(await roomPeerId('祝福のねこ123',webcrypto),await roomPeerId('祝福のねこ123',webcrypto));
+assert.equal(await roomPeerId('か\u3099',webcrypto),await roomPeerId('が',webcrypto));
+await assert.rejects(roomPeerId('hello!',webcrypto));
+const member={name:'ねこ',connected:false};
+assert.equal(classifyJoin([member],'ねこ',true,6).resume,member);
+assert.ok(classifyJoin([{...member,connected:true}],'ねこ',false,2).error);
+assert.ok(classifyJoin([member],'新規',true,3).error);
+assert.ok(classifyJoin([],'新規',false,6).error);
+assert.equal(classifyJoin([],'新規',false,5).join,true);
+const g=new Game({players:3});g.p[0].hand=[g.action(0,1)];g.p[1].hand=[g.action(1,2)];
+const v=playerView(g,1);assert.deepEqual(v.p[0].hand,[null]);assert.deepEqual(v.p[1].hand,g.p[1].hand);assert.equal(v.deckCount,g.deck.length);assert.equal(v.deck,undefined);assert.equal(v.cfg.seed,undefined);
+const h=hydrateView(v,1);assert.equal(h.deck.length,g.deck.length);
+const c=hydrateChoice(choiceView({id:1,token:3,prompt:'選択',context:{kind:'player'},opts:[{v:g.p[0],label:'P1'}]}),h);
+assert.equal(c.opts[0].v,h.p[0]);assert.equal(c.opts[0].v.hand[0],null);
+console.log('PASS LAN room identification, reconnect classification, private state and choice hydration');
+
+const hidden={type:'move',reason:'draw',card:g.p[0].hand[0],from:{zone:'deck'},to:{zone:'hand',player:0}};
+assert.equal(visualView(hidden,1).card,null);assert.deepEqual(visualView(hidden,0).card,hidden.card);
+const privateFusion={type:'fusion',player:0,card:hidden.card,material:g.p[1].hand[0]};
+assert.equal(visualView(privateFusion,1).card,undefined);
+const disconnectedVote=new Game({players:2,humanPlayers:[0,1]},async id=>id===1?null:null);
+await disconnectedVote.vote();assert.equal(disconnectedVote.votingResults.length,0);
+console.log('PASS animation privacy and disconnected voter skip');
