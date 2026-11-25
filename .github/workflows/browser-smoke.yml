@@ -13,7 +13,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        suite: [small, wide, game, cpu]
+        suite: [small, wide, game, cpu, vision, finish]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
