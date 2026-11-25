@@ -81,7 +81,7 @@ export function visualView(e,id){
   return {type:e.type,reason:e.reason,from:location(e.from),to:location(e.to),card:visible?copy(e.card):null};
  }
  if(e.type==='modify'||e.type==='fusion')return e.player===id?copy(e):{type:e.type,player:e.player,mode:e.mode};
- const keys={hp:['player','actor','old','value','presentation'],exchange:['players','before','after'],ability:['player','ability'],abilityLoss:['player','ability'],point:['player','count','value'],ap:['player','count','value'],eliminate:['player'],shuffle:['count','from','to'],notice:['text']}[e.type];
+ const keys={hp:['player','actor','old','value','presentation'],exchange:['players','before','after'],ability:['player','ability'],abilityLoss:['player','ability'],point:['player','count','value'],ap:['player','count'],eliminate:['player'],shuffle:['count','from','to'],notice:['text']}[e.type];
  return keys?copy(Object.fromEntries([['type',e.type],...keys.filter(k=>e[k]!==undefined).map(k=>[k,e[k]])])):null;
 }
 
