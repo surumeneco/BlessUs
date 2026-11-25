@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {webcrypto} from 'node:crypto';
-import {peerOptions,observeConnection,roomPeerId,classifyJoin,playerView,hydrateView,choiceView,hydrateChoice,visualView} from './lan.mjs';
+import {peerOptions,observeConnection,roomPeerId,classifyJoin,playerView,hydrateView,choiceView,hydrateChoice,visualView,combineLineVisuals} from './lan.mjs';
 import {Game} from './engine.mjs';
 assert.deepEqual(peerOptions().config.iceServers,[{urls:'stun:stun.l.google.com:19302'}]);
 assert.notEqual(peerOptions().config.iceServers,peerOptions().config.iceServers);
@@ -43,3 +43,5 @@ assert.equal(visualView(privateFusion,1).card,undefined);
 const disconnectedVote=new Game({players:2,humanPlayers:[0,1]},async id=>id===1?null:null);
 await disconnectedVote.vote();assert.equal(disconnectedVote.votingResults.length,0);
 console.log('PASS animation privacy and disconnected voter skip');
+
+const sourceEvents=[{type:'hp',player:0,actor:1,old:10,value:9},{type:'hp',player:2,actor:1,old:10,value:9},{type:'hp',player:0,actor:1,old:9,value:8},{type:'ap',player:1,value:1},{type:'ap',player:1,value:2},hidden];const originalEvents=JSON.stringify(sourceEvents),combined=combineLineVisuals(sourceEvents);assert.deepEqual(combined.map(e=>e.type),['hp','hp','ap','move']);assert.deepEqual(combined.slice(0,2).map(e=>[e.player,e.old,e.value]),[[0,10,8],[2,10,9]]);assert.equal(combined[2].count,2);assert.deepEqual(visualView(combined[2],2),{type:'ap',player:1,count:2});assert.equal(visualView(combined[3],1).card,null);assert.equal(JSON.stringify(sourceEvents),originalEvents);assert.equal(combineLineVisuals([{type:'hp',presentation:'exchange',player:0,old:1,value:4},{type:'hp',presentation:'exchange',player:0,old:4,value:2}]).length,2);console.log('PASS effect-row visual aggregation preserves source events, separate targets and privacy');
