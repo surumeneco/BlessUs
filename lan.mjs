@@ -97,11 +97,11 @@ export function installLan(Controller,{newProfile,cleanName,createCpuPolicy,PART
  P.canRemove=function(id){return this.canEditRoom()&&!this.isMember(id)&&this.modes.length>2};
  P.name=function(id){const p=this.profiles[id];return (this.isMember(id)?p?.humanName:this.cpu(id)?p?.cpuName:p?.humanName)||'P'+(id+1)};
  P.localRoom=function(){this.resetRoom();this.go('room')};
- P.resetRoom=function(){const old=this.profiles[this.ownId()]??newProfile(0);if(this.isGuest())this.room=this.net.localRoom??{rounds:3,hp:10,chance:25,deckId:'default',seed:'',powerEnabled:false};this.stopNetwork();this.modes=['human','cpu','cpu','cpu'];this.profiles=[old,...[1,2,3].map(newProfileSafe)];this.g=null;this.pending.clear();this.choice=null;this.flow=null;this.view=0;this.busy=false;this.abort=false};
+ P.resetRoom=function(){const old=this.profiles[this.ownId()]??newProfile(0);if(this.isGuest())this.room=this.net.localRoom??{rounds:3,hp:10,chance:25,deckId:'default',seed:'',powerEnabled:false};this.discardGame();this.stopNetwork();this.modes=['human','cpu','cpu','cpu'];this.profiles=[old,...[1,2,3].map(newProfileSafe)];this.view=0;this.abort=false};
  function newProfileSafe(i){return newProfile(i)}
  P.close=function(){if(this.aux.at(-1)?.kind==='connect'&&!this.net?.ready)this.stopNetwork();return original.close.call(this)};
  P.stopNetwork=function(){const n=this.net;this.net=null;if(n){clearTimeout(n.timer);clearInterval(n.interval);n.peer?.destroy()}};
- P.go=function(page){if(page==='home'&&this.net){this.abort=true;for(const c of this.pending.values())c.reject(Error('対戦中断'));this.pending.clear();this.flow?.resolve?.();this.resetRoom();this.abort=true}if(page==='room'&&this.isGuest()&&this.page==='result'){this.notify('ホストがルームへ戻るまでお待ちください');return}original.go.call(this,page)};
+ P.go=function(page){if(page==='home'&&this.net){this.resetRoom();this.abort=true}if(page==='room'&&this.isGuest()&&this.page==='result'){this.notify('ホストがルームへ戻るまでお待ちください');return}original.go.call(this,page)};
  P.drawMultiplayer=function(m){const u=this.ui;if(m.kind==='multi'){u.modal('みんなで遊ぶ',400,190,()=>this.close(),r=>{u.button('create-room','ルームを作成',rect(r.x,r.y,r.w,44),()=>{this.close();this.open('connect',{role:'host',name:this.profiles[0].humanName,pass:''})},{primary:true});u.button('join-room','ルームに参加',rect(r.x,r.y+54,r.w,44),()=>{this.close();this.open('connect',{role:'guest',name:this.profiles[0].humanName,pass:''})})});return}
  u.modal(m.role==='host'?'ルームを作成':'ルームに参加',450,255,()=>{this.stopNetwork();this.close()},(r,o)=>{u.button('network-name','名前：'+(m.name||'未入力'),rect(r.x,r.y,r.w,39),()=>this.editText('プレイヤー名',m.name,v=>{m.name=cleanName(v);this.render()}),{disabled:!!m.waiting});u.button('network-pass','合言葉：'+(m.pass||'未入力'),rect(r.x,r.y+48,r.w,39),()=>this.editText('合言葉',m.pass,v=>{m.pass=v;this.render()}),{disabled:!!m.waiting});u.text(m.error??(m.waiting?'接続中…':'同じLAN内での直接通信を推奨します'),r.x,r.y+98,13,{width:r.w,color:m.error?C.redInk:C.muted});u.button('network-connect',m.role==='host'?'作成する':'参加する',rect(o.x+o.w-120,o.y+o.h-49,108,38),()=>this.connectRoom(m),{primary:true,disabled:!!m.waiting||!m.name||!m.pass})})};
  P.connectRoom=async function(m){
@@ -170,7 +170,7 @@ export function installLan(Controller,{newProfile,cleanName,createCpuPolicy,PART
  this.g=msg.game?hydrateView(msg.game,msg.id):null;this.choice=msg.choice&&this.g?hydrateChoice(msg.choice,this.g):null;this.pending.clear();if(this.choice){if(oldChoice?.token===this.choice.token){this.choice.selected=this.choice.opts[selectedIndex]??null;if(this.collapsedModal===oldChoice)this.collapsedModal=this.choice}else{this.collapsedModal=null;this.filter={type:'all',trigger:'all',effect:'all',sort:'complex'};this.ui.offsets.delete('choice');this.ui.offsets.delete('vote')}this.pending.set(msg.id,this.choice)}
  this.flow=msg.flow;if(oldFlow&&this.flow&&this.collapsedModal===oldFlow&&oldFlow.kind===this.flow.kind&&oldFlow.index===this.flow.index)this.collapsedModal=this.flow;
  this.selected=this.g?.p[msg.id].hand.find(c=>c.id===oldCard)??null;this.page=msg.page;this.winnerLarge=false;
- if(first||oldPage!==this.page){this.endNativeText();this.aux=[];this.ui.offsets.clear();this.collapsedModal=null}
+ if(first||oldPage!==this.page){if(this.page==='room'){this.ui.clearAnimations();this.scene.cameras.main.resetFX()}this.endNativeText();this.aux=[];this.ui.offsets.clear();this.collapsedModal=null}
  if(this.drag){const current=this.g?.p[msg.id]?.hand.find(c=>c?.id===this.drag.c.id);if(oldActionSeq!==msg.actionSeq||!current||!this.canUse())this.ui.cancel();else this.drag.c=current}
  original.render.call(this);
  };
@@ -186,8 +186,8 @@ export function installLan(Controller,{newProfile,cleanName,createCpuPolicy,PART
  P.bindGame=function(g){
  original.bindGame.call(this,g);
  const emit=g.onVisual,activate=g.onActivation;
- g.onVisual=e=>{const kind=g.active?.progress?.at(-1)?.kind;if(kind==='line'||kind==='random'||kind==='settlement')emit({...e,remoteDeferred:true});else{emit(e);this.sendVisual(id=>visualView(e,id))}};
- g.onActivation=async info=>{if(info)this.sendVisual(()=>({type:'activation',activation:publicActivation(info)}));return activate(info)};
+ g.onVisual=e=>{if(!this.gameCurrent(g))return;const kind=g.active?.progress?.at(-1)?.kind;if(kind==='line'||kind==='random'||kind==='settlement')emit({...e,remoteDeferred:true});else{emit(e);this.sendVisual(id=>visualView(e,id))}};
+ g.onActivation=async info=>{this.checkGame(g);if(info)this.sendVisual(()=>({type:'activation',activation:publicActivation(info)}));return activate(info)};
  };
  P.sendVisual=function(project){if(this.net?.role!=='host')return;for(const m of this.net.members){if(!m.connected||!m.conn?.open)continue;const id=this.profiles.indexOf(m.profile),event=project(id);if(event)try{m.conn.send({type:'visual',event:copy(event)})}catch{}}};
  P.publishVisuals=function(events){if(!events.length)return;this.sendVisual(id=>{const projected=events.map(({remoteDeferred,fromPoint,view,...e})=>visualView(e,id)).filter(Boolean);return projected.length?{type:'batch',events:projected}:null})};
