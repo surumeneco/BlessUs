@@ -1,3 +1,4 @@
+import {normalizePower} from './power.mjs';
 // LAN play: one host owns the engine; each guest receives only its own view.
 const copy=x=>JSON.parse(JSON.stringify(x));
 // STUN adds direct routes; no TURN relay is configured.
@@ -35,9 +36,9 @@ export function classifyJoin(members,name,inMatch,count){
 }
 const publicActivation=a=>a?copy(Object.fromEntries(['kind','player','card','trigger','label','cause','from','manual','progress','randomResults','seq','round','turn','targets','steps','references'].filter(k=>a[k]!==undefined).map(k=>[k,a[k]]))):null;
 export function playerView(g,id){
- const own=g.p[id],visible=new Set([...own.hand,...g.grave].map(c=>c.id));
- return {cfg:{rounds:g.cfg.rounds},round:g.round,phase:g.phase,turn:g.turn,direction:g.direction,seats:[...g.seats],deckCount:g.deck.length,grave:copy(g.grave),
- p:g.p.map(p=>({id:p.id,hp:p.hp,dead:p.dead,score:p.score,ap:p.ap,abilities:[...p.abilities],roundScores:copy(p.roundScores),lastRank:p.lastRank,voteScore:p.voteScore,hand:p.id===id?copy(p.hand):Array(p.hand.length).fill(null)})),
+ const own=g.p[id],visible=new Set([...own.hand,...g.grave,...g.p.map(p=>p.power).filter(Boolean)].map(c=>c.id));
+ return {cfg:{rounds:g.cfg.rounds,powerEnabled:g.cfg.powerEnabled},round:g.round,phase:g.phase,turn:g.turn,direction:g.direction,seats:[...g.seats],deckCount:g.deck.length,grave:copy(g.grave),
+ p:g.p.map(p=>({id:p.id,hp:p.hp,dead:p.dead,score:p.score,ap:p.ap,abilities:[...p.abilities],power:copy(p.power??null),roundScores:copy(p.roundScores),lastRank:p.lastRank,voteScore:p.voteScore,hand:p.id===id?copy(p.hand):Array(p.hand.length).fill(null)})),
  used:[...g.used].filter(k=>visible.has(Number(k.split(':')[0]))),events:[...g.events].filter(k=>visible.has(k)),
  pending:g.pendingCards().filter(c=>visible.has(c.id)).map(c=>c.id),
  active:publicActivation(g.active),lastActivation:publicActivation(g.lastActivation),
@@ -49,7 +50,7 @@ export function choiceView(c){
 }
 export function hydrateView(v,id){
  const g={...v,deck:Array(v.deckCount).fill(null),used:new Set(v.used),events:new Set(v.events)};
- g.pendingCards=()=>[...g.p[id].hand,...g.grave].filter(c=>v.pending.includes(c.id));
+ g.pendingCards=()=>[...g.p[id].hand,...g.grave,...g.p.map(p=>p.power).filter(Boolean)].filter(c=>v.pending.includes(c.id));
  g.playable=c=>c.kind==='action'||c.kind==='event'&&!g.events.has(c.id);
  g.standings=()=>[...g.p].sort((a,b)=>b.score-a.score||b.lastRank-a.lastRank);
  return g;
@@ -63,7 +64,7 @@ export function hydrateChoice(v,g){
 export function combineLineVisuals(events){
  const result=[],groups=new Map();
  for(const e of events){
-  const key=e.type==='hp'&&e.presentation!=='exchange'?JSON.stringify(['hp',e.player,e.actor,Math.sign(e.value-e.old)]):e.type==='ap'?JSON.stringify(['ap',e.player]):null;
+  const key=e.type==='hp'&&e.presentation!=='exchange'?JSON.stringify(['hp',e.player,e.actor,Math.sign(e.value-e.old)]):e.type==='ap'?JSON.stringify(['ap',e.player,Math.sign(e.count??1)]):null;
   if(key===null){result.push(e);continue}
   const prior=groups.get(key);
   if(prior){if(e.type==='hp')prior.value+=e.value-e.old;else{prior.count+=(e.count??1);prior.value=e.value}}
@@ -80,7 +81,7 @@ export function visualView(e,id){
   return {type:e.type,reason:e.reason,from:location(e.from),to:location(e.to),card:visible?copy(e.card):null};
  }
  if(e.type==='modify'||e.type==='fusion')return e.player===id?copy(e):{type:e.type,player:e.player,mode:e.mode};
- const keys={hp:['player','actor','old','value','presentation'],exchange:['players','before','after'],ability:['player','ability'],ap:['player','count'],eliminate:['player'],shuffle:['count','from','to'],notice:['text']}[e.type];
+ const keys={hp:['player','actor','old','value','presentation'],exchange:['players','before','after'],ability:['player','ability'],abilityLoss:['player','ability'],point:['player','count','value'],ap:['player','count'],eliminate:['player'],shuffle:['count','from','to'],notice:['text']}[e.type];
  return keys?copy(Object.fromEntries([['type',e.type],...keys.filter(k=>e[k]!==undefined).map(k=>[k,e[k]])])):null;
 }
 
@@ -96,7 +97,7 @@ export function installLan(Controller,{newProfile,cleanName,createCpuPolicy,PART
  P.canRemove=function(id){return this.canEditRoom()&&!this.isMember(id)&&this.modes.length>2};
  P.name=function(id){const p=this.profiles[id];return (this.isMember(id)?p?.humanName:this.cpu(id)?p?.cpuName:p?.humanName)||'P'+(id+1)};
  P.localRoom=function(){this.resetRoom();this.go('room')};
- P.resetRoom=function(){const old=this.profiles[this.ownId()]??newProfile(0);if(this.isGuest())this.room=this.net.localRoom??{rounds:3,hp:10,chance:25,deckId:'default',seed:''};this.stopNetwork();this.modes=['human','cpu','cpu','cpu'];this.profiles=[old,...[1,2,3].map(newProfileSafe)];this.g=null;this.pending.clear();this.choice=null;this.flow=null;this.view=0;this.busy=false;this.abort=false};
+ P.resetRoom=function(){const old=this.profiles[this.ownId()]??newProfile(0);if(this.isGuest())this.room=this.net.localRoom??{rounds:3,hp:10,chance:25,deckId:'default',seed:'',powerEnabled:false};this.stopNetwork();this.modes=['human','cpu','cpu','cpu'];this.profiles=[old,...[1,2,3].map(newProfileSafe)];this.g=null;this.pending.clear();this.choice=null;this.flow=null;this.view=0;this.busy=false;this.abort=false};
  function newProfileSafe(i){return newProfile(i)}
  P.close=function(){if(this.aux.at(-1)?.kind==='connect'&&!this.net?.ready)this.stopNetwork();return original.close.call(this)};
  P.stopNetwork=function(){const n=this.net;this.net=null;if(n){clearTimeout(n.timer);clearInterval(n.interval);n.peer?.destroy()}};
@@ -116,7 +117,7 @@ export function installLan(Controller,{newProfile,cleanName,createCpuPolicy,PART
  const peer=n.peer=m.role==='host'?new PeerCtor(id,peerOptions()):new PeerCtor(peerOptions());
  n.timer=setTimeout(()=>{networkLog(n.role,'timeout',{stage:n.stage});fail('接続がタイムアウトしました（'+({signaling:'接続先登録',direct:'端末間通信',join:'ルーム応答'}[n.stage]??'接続')+'）')},30000);
  peer.on('error',e=>{networkLog(n.role,'signaling-error',{type:e.type});fail(e.type==='unavailable-id'?'その合言葉のルームが既に存在します':e.type==='peer-unavailable'?'ルームが見つかりません':'接続できませんでした')});
- peer.on('open',()=>{if(this.net!==n)return;networkLog(n.role,'signaling-open');if(n.role==='host'){this.modes=['human','cpu','cpu','cpu'];this.profiles=[profile,...[1,2,3].map(newProfileSafe)];n.ready=true;clearTimeout(n.timer);this.go('room');n.interval=setInterval(()=>{this.heartbeat();this.broadcast()},150)}else{n.stage='direct';const conn=n.conn=peer.connect(id,{reliable:true,serialization:'binary'});observeConnection(conn,n.role);conn.on('open',()=>{n.stage='join';networkLog(n.role,'join-sent');conn.send({type:'join',name,appearance:profile.appearance})});conn.on('data',msg=>{if(this.net!==n)return;n.lastSeen=Date.now();if(msg?.type==='ping'){if(conn.open)conn.send({type:'pong'});return}if(msg?.type==='error'){if(!n.ready)fail(msg.message);else this.notify(msg.message);return}if(msg?.type==='state'){clearTimeout(n.timer);if(!n.ready){networkLog(n.role,'join-accepted');n.interval=setInterval(()=>this.heartbeat(),1000)}n.ready=true;this.receiveState(msg)}else if(msg?.type==='visual'&&n.ready)this.animateRemote(msg.event)});conn.on('close',()=>fail('ホストとの接続が切断されました'));conn.on('error',()=>fail('ホストとの接続に失敗しました'))}});
+ peer.on('open',()=>{if(this.net!==n)return;networkLog(n.role,'signaling-open');if(n.role==='host'){this.modes=['human','cpu','cpu','cpu'];this.profiles=[profile,...[1,2,3].map(newProfileSafe)];n.ready=true;clearTimeout(n.timer);this.go('room');n.interval=setInterval(()=>{this.heartbeat();this.broadcast()},150)}else{n.stage='direct';const conn=n.conn=peer.connect(id,{reliable:true,serialization:'binary'});observeConnection(conn,n.role);conn.on('open',()=>{n.stage='join';networkLog(n.role,'join-sent');conn.send({type:'join',name,appearance:profile.appearance,power:normalizePower(profile.power)})});conn.on('data',msg=>{if(this.net!==n)return;n.lastSeen=Date.now();if(msg?.type==='ping'){if(conn.open)conn.send({type:'pong'});return}if(msg?.type==='error'){if(!n.ready)fail(msg.message);else this.notify(msg.message);return}if(msg?.type==='state'){clearTimeout(n.timer);if(!n.ready){networkLog(n.role,'join-accepted');n.interval=setInterval(()=>this.heartbeat(),1000)}n.ready=true;this.receiveState(msg)}else if(msg?.type==='visual'&&n.ready)this.animateRemote(msg.event)});conn.on('close',()=>fail('ホストとの接続が切断されました'));conn.on('error',()=>fail('ホストとの接続に失敗しました'))}});
  peer.on('connection',conn=>{if(this.net!==n||n.role!=='host'){conn.close();return}observeConnection(conn,n.role);this.hostConnection(n,conn)});
  }catch(e){if(n&&this.net===n)this.stopNetwork();m.waiting=false;m.error=e.message;this.render()}
  };
@@ -132,7 +133,7 @@ export function installLan(Controller,{newProfile,cleanName,createCpuPolicy,PART
  const records=[{name:this.profiles[0].humanName,connected:true,host:true},...n.members.map(m=>({name:m.profile.humanName,connected:m.connected,record:m}))];
  const result=classifyJoin(records,name,this.page!=='room',this.modes.length);if(result.error){reject(result.error);return}
  if(result.resume){member=result.resume.record;member.connected=true;member.conn=conn;const id=this.profiles.indexOf(member.profile);this.modes[id]=member.mode;if(this.g&&this.page!=='room'){if(member.mode==='human')this.g.humanPlayers.add(id);else this.g.humanPlayers.delete(id)}}
- else{const profile=newProfile(this.profiles.length);profile.humanName=name;profile.appearance=this.validAppearance(msg.appearance,profile.appearance);this.profiles.push(profile);this.modes.push('human');member={profile,connected:true,conn,mode:'human'};n.members.push(member)}
+ else{const profile=newProfile(this.profiles.length);profile.humanName=name;profile.appearance=this.validAppearance(msg.appearance,profile.appearance);profile.power=normalizePower(msg.power);this.profiles.push(profile);this.modes.push('human');member={profile,connected:true,conn,mode:'human'};n.members.push(member)}
  member.lastSeen=Date.now();member.lastPing=0;member.onLost=closedFn;if(result.resume){this.notify(member.profile.humanName+' が再接続しました');this.broadcast(true)}else{this.render();this.broadcast(true)}return}
  if(member.conn!==conn||!member.connected)return;member.lastSeen=Date.now();if(msg.type==='pong')return;this.hostAction(member,msg)});
  };
@@ -143,6 +144,7 @@ export function installLan(Controller,{newProfile,cleanName,createCpuPolicy,PART
  const error=message=>member.conn?.send({type:'error',message});
  if(msg.type==='profile'){
  if(msg.appearance)member.profile.appearance=this.validAppearance(msg.appearance,member.profile.appearance);
+ if('power'in msg)member.profile.power=normalizePower(msg.power);
  if(this.page==='room'){if(msg.name!==undefined){const name=cleanName(msg.name);if(!name||!this.uniqueName(name,id)){error('同じ名前は使用できません');return}member.profile.humanName=name}
  if(['human','cpu'].includes(msg.mode)){member.mode=msg.mode;this.modes[id]=msg.mode}}this.render();return}
  if(this.page!=='battle'||!this.g||this.cpu(id))return;
@@ -158,7 +160,7 @@ export function installLan(Controller,{newProfile,cleanName,createCpuPolicy,PART
  for(const m of n.members){if(!m.connected||!m.conn?.open)continue;const id=this.profiles.indexOf(m.profile);if(id<0)continue;
  const battle=['battle','result'].includes(this.page)&&this.g;
  const f=this.flow,flow=f?copy(Object.fromEntries(['kind','before','order','values','stage','ready','result','index','total'].filter(k=>f[k]!==undefined).map(k=>[k,f[k]]))):null;
- const state={type:'state',id,page:this.page,profiles:copy(this.profiles),modes:[...this.modes],memberIds,disconnected,room:{rounds:this.room.rounds,hp:this.room.hp,chance:this.room.chance,deckId:this.room.deckId,deckName:this.decks.find(d=>d.id===this.room.deckId)?.name??'標準 50枚',seed:''},busy:this.busy,actionSeq:this.actionSeq??0,game:battle?playerView(this.g,id):null,choice:battle?choiceView(this.pending.get(id)):null,flow:battle?flow:null};
+ const state={type:'state',id,page:this.page,profiles:copy(this.profiles),modes:[...this.modes],memberIds,disconnected,room:{rounds:this.room.rounds,hp:this.room.hp,chance:this.room.chance,powerEnabled:this.room.powerEnabled===true,deckId:this.room.deckId,deckName:this.decks.find(d=>d.id===this.room.deckId)?.name??'標準 50枚',seed:''},busy:this.busy,actionSeq:this.actionSeq??0,game:battle?playerView(this.g,id):null,choice:battle?choiceView(this.pending.get(id)):null,flow:battle?flow:null};
  const serialized=JSON.stringify(state);if(force||serialized!==m.last){m.last=serialized;try{m.conn.send(state)}catch{}}
  }
  };
@@ -175,7 +177,7 @@ export function installLan(Controller,{newProfile,cleanName,createCpuPolicy,PART
  P.render=function(){original.render.call(this);if(this.net?.role==='host'&&this.net.ready)this.broadcast()};
  P.send=function(msg){if(this.isGuest()&&this.net.conn?.open)this.net.conn.send(['play','end'].includes(msg.type)?{...msg,seq:this.net.actionSeq}:msg)};
  P.run=function(fn){this.actionSeq=(this.actionSeq??0)+1;return original.run.call(this,fn)};
- P.profileChanged=function(){if(this.isGuest())this.send({type:'profile',appearance:this.appearance(this.ownId())});this.render()};
+ P.profileChanged=function(){if(this.isGuest())this.send({type:'profile',appearance:this.appearance(this.ownId()),power:normalizePower(this.profiles[this.ownId()]?.power)});this.render()};
  P.changeName=function(id){if(id!==this.ownId())return;this.editText('名前を変更',this.name(id),v=>{const name=cleanName(v);if(!name)return;if(this.isGuest()){this.send({type:'profile',name});return}if(this.net&&!this.uniqueName(name,id)){this.notify('同じ名前は使用できません');return}this.profiles[id].humanName=name;this.render()})};
  P.toggleMode=function(id){if(id!==this.ownId()||this.page!=='room')return;const mode=this.cpu(id)?'human':'cpu';if(this.isGuest())this.send({type:'profile',mode});else{this.modes[id]=mode;this.render()}};
  P.addPlayer=function(mode){if(mode==='cpu'&&this.canEditRoom())original.addPlayer.call(this,mode)};
@@ -184,7 +186,7 @@ export function installLan(Controller,{newProfile,cleanName,createCpuPolicy,PART
  P.bindGame=function(g){
  original.bindGame.call(this,g);
  const emit=g.onVisual,activate=g.onActivation;
- g.onVisual=e=>{const kind=g.active?.progress?.at(-1)?.kind;if(kind==='line'||kind==='random')emit({...e,remoteDeferred:true});else{emit(e);this.sendVisual(id=>visualView(e,id))}};
+ g.onVisual=e=>{const kind=g.active?.progress?.at(-1)?.kind;if(kind==='line'||kind==='random'||kind==='settlement')emit({...e,remoteDeferred:true});else{emit(e);this.sendVisual(id=>visualView(e,id))}};
  g.onActivation=async info=>{if(info)this.sendVisual(()=>({type:'activation',activation:publicActivation(info)}));return activate(info)};
  };
  P.sendVisual=function(project){if(this.net?.role!=='host')return;for(const m of this.net.members){if(!m.connected||!m.conn?.open)continue;const id=this.profiles.indexOf(m.profile),event=project(id);if(event)try{m.conn.send({type:'visual',event:copy(event)})}catch{}}};
@@ -205,7 +207,9 @@ export function installLan(Controller,{newProfile,cleanName,createCpuPolicy,PART
  else if(e.type==='modify'||e.type==='fusion'){const where=at(e.player);if(where)jobs.push(u.floatText(e.type==='fusion'?'融合':'カード改変',where,ms));}
  else if(e.type==='eliminate'&&at(e.player))jobs.push(u.floatText('脱落',at(e.player),ms,C.muted));
  else if(e.type==='ability'&&at(e.player))jobs.push(u.attachIcon(e.ability,at(e.player),ms));
- else if(e.type==='ap'&&at(e.player))jobs.push(u.floatText('+'+(e.count??1),at(e.player),ms,C.gold));
+ else if(e.type==='abilityLoss'&&at(e.player))jobs.push(u.floatText('アビリティ喪失',at(e.player),ms,C.muted));
+ else if(e.type==='point'&&at(e.player))jobs.push(u.floatText('+'+e.count+'pt',at(e.player),ms,C.gold));
+ else if(e.type==='ap'&&at(e.player))jobs.push(u.floatText(((e.count??1)>0?'+':'')+(e.count??1),at(e.player),ms,C.gold));
  else if(e.type==='notice')jobs.push(this.banner(e.text,650,null,C.muted));
  else if(e.type==='shuffle'){const from=this.anchor(e.from),to=this.anchor(e.to);if(from&&to)jobs.push(u.fly(back,from,to,ms,{back:true,reason:'shuffle'}))}
  Promise.all(jobs).catch(()=>{});
