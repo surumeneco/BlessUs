@@ -1,7 +1,25 @@
 import assert from 'node:assert/strict';
 import {webcrypto} from 'node:crypto';
-import {roomPeerId,classifyJoin,playerView,hydrateView,choiceView,hydrateChoice,visualView} from './lan.mjs';
+import {peerOptions,observeConnection,roomPeerId,classifyJoin,playerView,hydrateView,choiceView,hydrateChoice,visualView} from './lan.mjs';
 import {Game} from './engine.mjs';
+assert.deepEqual(peerOptions().config.iceServers,[{urls:'stun:stun.l.google.com:19302'}]);
+assert.notEqual(peerOptions().config.iceServers,peerOptions().config.iceServers);
+const eventHandlers={},peerHandlers={},diagnostics=[];
+const oldInfo=console.info;
+try {
+ console.info=(...args)=>diagnostics.push(args);
+ const pc={iceConnectionState:'new',iceGatheringState:'gathering',connectionState:'new',signalingState:'stable',addEventListener:(key,fn)=>eventHandlers[key]=fn};
+ observeConnection({peerConnection:pc,on:(key,fn)=>peerHandlers[key]=fn},'guest');
+ eventHandlers.icecandidate({candidate:{type:'srflx',protocol:'udp',address:'private-address'}});
+ eventHandlers.icecandidateerror({errorCode:701,url:'private-url'});
+ pc.iceConnectionState='connected';eventHandlers.iceconnectionstatechange();
+ peerHandlers.open();peerHandlers.error({type:'network',message:'private-message'});
+ assert.ok(diagnostics.some(x=>x[2]==='icecandidate'&&x[3].type==='srflx'));
+ assert.ok(diagnostics.some(x=>x[2]==='iceconnectionstatechange'&&x[3].ice==='connected'));
+ assert.ok(diagnostics.some(x=>x[2]==='datachannel-open'));
+ assert.ok(!JSON.stringify(diagnostics).includes('private-'));
+}finally{console.info=oldInfo}
+console.log('PASS STUN-only configuration and non-sensitive connection diagnostics');
 assert.equal(await roomPeerId('祝福のねこ123',webcrypto),await roomPeerId('祝福のねこ123',webcrypto));
 assert.equal(await roomPeerId('か\u3099',webcrypto),await roomPeerId('が',webcrypto));
 await assert.rejects(roomPeerId('hello!',webcrypto));
