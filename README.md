@@ -35,10 +35,11 @@ node prototype-test.mjs
 node feedback-test.mjs
 node native-test.mjs
 node polish-test.mjs
+node balance-test.mjs
 npm install --no-save --no-package-lock playwright@1.56.1 phaser@3.90.0
 npx playwright install chromium
 # 静的サーバー起動後
 node browser-test.mjs
 ```
 
-ブラウザ検証は実際のPhaserのCanvasを起動し、画面サイズ・画素密度・ポインタ座標・タッチ長押し・手札ドラッグ・並行選択・他プレイヤーの発動位置を確認する。検証用の読み取り専用スナップショットは `?test=1` の場合のみ利用可能。実機・色覚・演出の体験品質は別途確認する。
+ブラウザ検証は実際のPhaserのCanvasを起動し、画面サイズ・画素密度・ポインタ座標・タッチ長押し・手札ドラッグ・並行選択・他プレイヤーの発動位置を確認する。検証用のスナップショット・カード描画フィクスチャは `?test=1` の場合のみ利用可能。実機・色覚・演出の体験品質は別途確認する。
