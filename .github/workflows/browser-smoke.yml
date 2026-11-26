@@ -53,12 +53,6 @@ jobs:
       - run: npm install --no-save --no-package-lock playwright@1.56.1 phaser@3.90.0 peerjs@1.5.5 peer@1.0.2
       - run: npx playwright install chromium
       - run: |
-          if [ "$GITHUB_HEAD_REF" = perf/history-delta ] && [ "${{ matrix.group }}" = layout ]; then
-            git fetch --no-tags origin dde6457e8e0392e22b0b14c495ef4ff23f94691b
-            mkdir -p .baseline
-            git archive dde6457e8e0392e22b0b14c495ef4ff23f94691b | tar -x -C .baseline
-            export BLESS_BASELINE_URL=http://127.0.0.1:8000/.baseline/
-          fi
           python3 -m http.server 8000 --bind 127.0.0.1 >/tmp/bless-http.log 2>&1 &
           for i in $(seq 1 20); do curl -fsS http://127.0.0.1:8000/ >/dev/null && break; sleep 1; done
           node browser-test.mjs
