@@ -4,29 +4,24 @@ on:
     branches: [develop]
   push:
     branches: [develop]
+  workflow_dispatch:
+concurrency:
+  group: bless-checks-${{ github.ref }}
+  cancel-in-progress: true
 permissions:
   contents: read
 jobs:
-  viewport:
+  rules:
     runs-on: ubuntu-24.04
-    timeout-minutes: 12
-    strategy:
-      fail-fast: false
-      matrix:
-        suite: [small, wide, game, cpu, vision, finish, profile, chain, lan]
+    timeout-minutes: 3
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: npm install --no-save --no-package-lock playwright@1.56.1 phaser@3.90.0 peerjs@1.5.5 peer@1.0.2
-      - run: npx playwright install --with-deps chromium
       - run: |
-          python3 -m http.server 8000 --bind 127.0.0.1 >/tmp/bless-http.log 2>&1 &
-          for i in $(seq 1 20); do curl -fsS http://127.0.0.1:8000/ >/dev/null && break; sleep 1; done
           node turn-resolution-test.mjs
           node lan-test.mjs
-          node --check lan.mjs
           node test.mjs
           node prototype-test.mjs
           node feedback-test.mjs
@@ -34,14 +29,39 @@ jobs:
           node polish-test.mjs
           node balance-test.mjs
           node profile-test.mjs
+          node --check lan.mjs
           node --check app.mjs
           node --check presentation.mjs
-          BLESS_BROWSER_SUITE=${{ matrix.suite }} node browser-test.mjs
-      - uses: actions/upload-artifact@v4
-        if: always()
+  browser:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - group: layout
+            suites: small,wide,vision
+          - group: game
+            suites: game,cpu,finish
+          - group: interactions
+            suites: profile,chain,lan
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
-          name: bless-native-browser-evidence-${{ matrix.suite }}
-          path: |
-            screenshots/
-            node_modules/phaser/dist/phaser.min.js
+          node-version: '22'
+      - run: npm install --no-save --no-package-lock playwright@1.56.1 phaser@3.90.0 peerjs@1.5.5 peer@1.0.2
+      - run: npx playwright install chromium
+      - run: |
+          python3 -m http.server 8000 --bind 127.0.0.1 >/tmp/bless-http.log 2>&1 &
+          for i in $(seq 1 20); do curl -fsS http://127.0.0.1:8000/ >/dev/null && break; sleep 1; done
+          node browser-test.mjs
+        env:
+          BLESS_BROWSER_SUITE: ${{ matrix.suites }}
+          BLESS_CAPTURE_SCREENSHOTS: ${{ github.event_name == 'workflow_dispatch' && '1' || '0' }}
+      - uses: actions/upload-artifact@v4
+        if: failure() || github.event_name == 'workflow_dispatch'
+        with:
+          name: bless-browser-evidence-${{ matrix.group }}
+          path: screenshots/
           retention-days: 3
