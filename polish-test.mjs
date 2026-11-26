@@ -74,3 +74,15 @@ for(const [event,mode] of [[2,'変更'],[3,'追加']])for(const saturated of [fa
  const game=new Game({players:2},async()=>{throw Error('impossible trigger choice must not be shown')});const player=game.p[0],card=game.action(0,0);card.t=T.map((_,i)=>i);player.hand=[card];await game.powerEffect(player,15,game.group(0),{}, {unpaid:0},[]);assert.equal(card.t.length,T.length);
 }
 console.log('PASS precise power, event and upgrade modification prompts including guest context and exhausted triggers');
+
+// Quantity edits must retain collection order while a card type still exists.
+{
+ const cardKeyForTest=new Function(appSource.match(/^const cardKey=.*;$/m)[0]+';return cardKey')();
+ const DeckController=new Function('clone','cardKey',appSource.slice(appSource.indexOf('class Controller{'),appSource.indexOf('installLan(Controller,')).trim()+';return Controller')(x=>structuredClone(x),cardKeyForTest);
+ const action={kind:'action',t:[0],e:[{id:0,n:1}]},other={kind:'action',t:[0],e:[{id:1,n:1}]},event={kind:'event',event:0},otherEvent={kind:'event',event:1};
+ const controller=Object.assign(Object.create(DeckController.prototype),{draft:{cards:[action,event,other,otherEvent,structuredClone(action),structuredClone(event)]},render(){}});
+ const keys=()=>[...new Set(controller.draft.cards.map(cardKeyForTest))],count=c=>controller.draft.cards.filter(x=>cardKeyForTest(x)===cardKeyForTest(c)).length,order=keys();
+ for(const c of [action,event]){controller.adjust(c,-1);assert.equal(count(c),1);assert.deepEqual(keys(),order);for(let i=0;i<3;i++){controller.adjust(c,1);assert.equal(count(c),2);assert.deepEqual(keys(),order);controller.adjust(c,-1);assert.equal(count(c),1);assert.deepEqual(keys(),order)}assert.ok(controller.draft.cards.includes(c));}
+ controller.adjust(action,-1);assert.deepEqual(keys(),order.filter(k=>k!==cardKeyForTest(action)));assert.equal(count(action),0);assert.equal(controller.dirty,true);
+}
+console.log('PASS deck quantity edits preserve first occurrence and collection order for action and event cards');
