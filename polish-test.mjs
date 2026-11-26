@@ -17,7 +17,7 @@ for(const fg of ['ink','greenInk','goldInk','redInk'])for(const bg of ['paper','
 const appSource=readFileSync(new URL('./app.mjs',import.meta.url),'utf8');
 const hook=appSource.slice(appSource.indexOf('  g.onEffect=async info=>'),appSource.indexOf('  g.onEffectApplied=',appSource.indexOf('  g.onEffect=async info=>'))).trim();
 const bind=new Function('g',hook);const shown=[];let release;
-const controller={render(){},dur:n=>n,ui:{anchors:new Map([['active',{x:150,y:200}]]),effectResult(label,at,ms){shown.push({label,at,ms});return new Promise(r=>{release=r})}},delay(){throw Error('unexpected candidate delay')}};
+const controller={renderState(){},render(){},dur:n=>n,ui:{anchors:new Map([['active',{x:150,y:200}]]),effectResult(label,at,ms){shown.push({label,at,ms});return new Promise(r=>{release=r})}},delay(){throw Error('unexpected candidate delay')}};
 const randomGame=new Game({players:2},async(_,q,o)=>{assert.equal(shown.length,1);assert.ok(released);return o[1]});const randomPlayer=randomGame.p[0],randomCard=randomGame.action(0,13);randomPlayer.hand=[randomCard];randomGame.int=()=>0;bind.call(controller,randomGame);let released=false;const running=randomGame.fire(randomCard);for(let i=0;i<20&&!release;i++)await Promise.resolve();assert.equal(shown.length,1);assert.equal(shown[0].label,'1ダメージを任意のプレイヤーに与える');assert.equal(shown[0].ms,650);assert.equal(randomGame.p[1].hp,10);released=true;release();await running;assert.equal(randomGame.p[1].hp,9);assert.ok(!palette.includes('rollEffect('));assert.ok(!palette.includes('効果を抽選中'));console.log('PASS random effect immediately presents its actual result, holds before target selection, and never rolls presentation candidates');
 
 // Actual branching chain: root A -> B, C, D. D's cause is older than two recent cards.
@@ -34,7 +34,7 @@ async function verifyRows(effects,{repeat=false,replay=false}={}){
  const g=new Game({players:3},async(_,q,opts)=>opts.find(o=>o.v===g.p[1])??opts[0]);g.deck=[];g.grave=[];g.round=1;g.phase='play';const p=g.p[0],c=g.action(0,replay?10:effects[0].id);
  c.e=replay?[{id:10,n:1}]:effects.map(e=>({...e}));p.hand=[c];if(replay)g.history=[{id:100,e:effects}];if(repeat){p.abilities=[6];g.rnd=()=>0}
  for(let i=0;i<12;i++)g.deck.push(g.action(0,2));
- const frames=[],waits=[],controller={events:[],checkGame(game){assert.equal(game,g)},render(){},delay(n){waits.push(n)},dur:n=>n,ui:{anchors:new Map(),pulseCount(){},effectResult(){}},async flush(row){assert.equal(row,true);if(this.events.length)frames.push(this.events.splice(0))}};
+ const frames=[],waits=[],controller={events:[],checkGame(game){assert.equal(game,g)},renderState(){},render(){},delay(n){waits.push(n)},dur:n=>n,ui:{anchors:new Map(),pulseCount(){},effectResult(){}},async flush(row){assert.equal(row,true);if(this.events.length)frames.push(this.events.splice(0))}};
  bindRows.call(controller,g);g.onVisual=e=>{if(e.reason!=='resolved')controller.events.push(e)};
  await g.fire(c);return {g,frames,waits}
 }

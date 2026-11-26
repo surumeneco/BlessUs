@@ -94,6 +94,7 @@ try{
   const host=await client(),guest=await client();let resumed;
   try{
    await join(host,true,'ホスト');await join(guest,false,'ゲスト');await wait(host.page,s=>s.profiles.length===5,'guest joined');await wait(guest.page,s=>s.profiles.length===5,'guest room sync');
+   const idleBuilds=await host.page.evaluate(()=>window.__blessTest.runtime().stateBuilds);await host.page.waitForTimeout(500);assert.equal(await host.page.evaluate(()=>window.__blessTest.runtime().stateBuilds),idleBuilds,'idle room does not build network state');
    assert.equal((await snap(guest.page)).network.id,4);assert.equal((await snap(guest.page)).hits.find(h=>h.id==='start')?.disabled,true);
    for(const i of [3,2,1])await click(host.page,'remove-'+i);
    await wait(guest.page,s=>s.network.id===1&&s.profiles.length===2,'room compacted');
