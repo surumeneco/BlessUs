@@ -1,6 +1,6 @@
 import {PALETTE} from './player-profile.mjs?v=native-1';
-import {T,V,effectLabel,cardEffectLabel} from './engine.mjs?v=modification-prompts-1';
-import {PT,PE,powerEffectLabel,powerEffectDetail,powerScore} from './power.mjs';
+import {T,V,effectLabel,cardEffectLabel} from './engine.mjs?v=random-effect-quantity-1';
+import {PT,PE,powerEffectLabel,powerEffectDetail,powerScore} from './power.mjs?v=random-effect-quantity-1';
 export const C={bg:0xf4f2fa,paper:0xfdfcff,ink:0x44364f,muted:0x766780,line:0xdad4e5,purple:0x7555b7,lav:0xeee6fa,teal:0x78cec8,table:0xa5dece,green:0x338b75,gold:0xc58b21,glow:0xa56be9,red:0xb45b40,greenInk:0x1d634e,goldInk:0x765013,redInk:0x8f3b29};
 export const COLORS=[0xb8a2eb,0x78cec8,0xf6a38e,0xf7c865,0x91b8ed,0xeaa7ca];
 export const AB=['ラウンド開始時の体力を1増加する。','ラウンド開始時の手札を1枚増やす。','ラウンド開始時の任意の手札1枚にランダムなトリガーを1つ追加する。','ラウンド開始時の任意の手札1枚にランダムな効果を1つ追加する。','ラウンド終了時に1ポイント獲得する。','ラウンド終了時にアクションカードを追加する時の効果が1つ増える。','25%の確率で効果が2回発動する（効果1行毎に判定）。','脱落中を含む自分のターン終了時に、他のプレイヤー全員に1ダメージ与える（ラウンド終了時に喪失）。'];

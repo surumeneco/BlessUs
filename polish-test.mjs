@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import {Game,T} from './engine.mjs';
+import {Game,T,E,cardEffectLabel,effectLabel} from './engine.mjs';
+import {PE,powerEffectLabel,powerEffectDetail} from './power.mjs';
 import {choiceView,hydrateChoice} from './lan.mjs';
 import {logLayout,activationContext} from './log-layout.mjs';
 const entries=[{index:1,activation:10,root:true},{index:2,activation:10},{index:3,activation:20,root:true},{index:4,activation:30,root:true},{index:5,activation:20},{index:6,cause:10}];
@@ -86,3 +87,17 @@ console.log('PASS precise power, event and upgrade modification prompts includin
  controller.adjust(action,-1);assert.deepEqual(keys(),order.filter(k=>k!==cardKeyForTest(action)));assert.equal(count(action),0);assert.equal(controller.dirty,true);
 }
 console.log('PASS deck quantity edits preserve first occurrence and collection order for action and event cards');
+
+// Every repeatable effect shows its quantity first, including one random activation.
+{
+ const unique=new Set([3,9,10,12,18,20,21]);
+ for(let n=1;n<=5;n++){
+  assert.equal(cardEffectLabel(13,n),n+'回ランダムな効果発動');
+  assert.equal(effectLabel(13,n),n+'回ランダムな効果を発動する');
+  assert.equal(powerEffectLabel(21,n),n+'回ランダムな効果発動');
+  assert.equal(powerEffectDetail(21,n),n+'回、パワー効果からランダムに選ばれた効果を発動する');
+  for(const id of E.keys())if(!unique.has(id))for(const label of [cardEffectLabel(id,n),effectLabel(id,n)])assert.ok(label.startsWith(String(n)),label);
+  for(const id of PE.keys())if(!PE[id][4])for(const label of [powerEffectLabel(id,n),powerEffectDetail(id,n)])assert.ok(label.startsWith(String(n)),label);
+ }
+}
+console.log('PASS all 37 repeatable effect labels show quantity first for counts 1 through 5');
