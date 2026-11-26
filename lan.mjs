@@ -160,7 +160,7 @@ export function installLan(Controller,{newProfile,cleanName,createCpuPolicy,PART
  for(const m of n.members){if(!m.connected||!m.conn?.open)continue;const id=this.profiles.indexOf(m.profile);if(id<0)continue;
  const battle=['battle','result'].includes(this.page)&&this.g;
  const f=this.flow,flow=f?copy(Object.fromEntries(['kind','before','order','values','stage','ready','result','index','total'].filter(k=>f[k]!==undefined).map(k=>[k,f[k]]))):null;
- const state={type:'state',id,page:this.page,profiles:copy(this.profiles),modes:[...this.modes],memberIds,disconnected,room:{rounds:this.room.rounds,hp:this.room.hp,chance:this.room.chance,powerEnabled:this.room.powerEnabled===true,deckId:this.room.deckId,deckName:this.decks.find(d=>d.id===this.room.deckId)?.name??'標準 50枚',seed:''},busy:this.busy,actionSeq:this.actionSeq??0,game:battle?playerView(this.g,id):null,choice:battle?choiceView(this.pending.get(id)):null,flow:battle?flow:null};
+ const state={type:'state',id,page:this.page,profiles:copy(this.profiles),modes:[...this.modes],memberIds,disconnected,room:{rounds:this.room.rounds,hp:this.room.hp,chance:this.room.chance,powerEnabled:this.room.powerEnabled===true,deckId:this.room.deckId,deckName:this.deckName(),seed:''},busy:this.busy,actionSeq:this.actionSeq??0,game:battle?playerView(this.g,id):null,choice:battle?choiceView(this.pending.get(id)):null,flow:battle?flow:null};
  const serialized=JSON.stringify(state);if(force||serialized!==m.last){m.last=serialized;try{m.conn.send(state)}catch{}}
  }
  };
