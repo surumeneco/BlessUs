@@ -53,6 +53,9 @@ const lifecycle=()=>Object.assign(Object.create(ControllerForLifecycle.prototype
 {
  const c=lifecycle();c.aux=[{}];const old=c.waitModal();c.closeGame();c.g={phase:'play'};c.abort=false;c.page='battle';await assert.rejects(old,/対戦中断/);
 }
+{
+ const c=lifecycle();c.pending.set(1,{token:1});c.closeGame();assert.equal(c.page,'room');assert.equal(c.busy,false);assert.equal(c.g,null);assert.equal(c.pending.size,0);
+}
 console.log('PASS abort resets room, stale run and modal cannot affect restarted match');
 
 // Real engine choices, including the context projected to the guest, drive the actual UI copy.
