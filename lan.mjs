@@ -35,20 +35,20 @@ export function classifyJoin(members,name,inMatch,count){
  return {join:true};
 }
 const publicActivation=a=>a?copy(Object.fromEntries(['kind','player','card','trigger','label','cause','from','manual','progress','randomResults','seq','round','turn','targets','steps','references'].filter(k=>a[k]!==undefined).map(k=>[k,a[k]]))):null;
-export function playerView(g,id){
+export function playerView(g,id,history=null){
  const own=g.p[id],visible=new Set([...own.hand,...g.grave,...g.p.map(p=>p.power).filter(Boolean)].map(c=>c.id));
  return {cfg:{rounds:g.cfg.rounds,powerEnabled:g.cfg.powerEnabled},round:g.round,phase:g.phase,turn:g.turn,direction:g.direction,seats:[...g.seats],deckCount:g.deck.length,grave:copy(g.grave),
  p:g.p.map(p=>({id:p.id,hp:p.hp,dead:p.dead,score:p.score,ap:p.ap,abilities:[...p.abilities],power:copy(p.power??null),roundScores:copy(p.roundScores),lastRank:p.lastRank,voteScore:p.voteScore,hand:p.id===id?copy(p.hand):Array(p.hand.length).fill(null)})),
  used:[...g.used].filter(k=>visible.has(Number(k.split(':')[0]))),events:[...g.events].filter(k=>visible.has(k)),
  pending:g.pendingCards().filter(c=>visible.has(c.id)).map(c=>c.id),
- active:publicActivation(g.active),lastActivation:publicActivation(g.lastActivation),
- activations:g.activations.map(publicActivation),allActivations:g.allActivations.map(publicActivation),timeline:copy(g.timeline)};
+ ...(history?{historyFrom:history,activeSeq:g.active?.seq??null,lastActivationSeq:g.lastActivation?.seq??null,allActivations:g.allActivations.slice(history.activations).map(publicActivation),timeline:copy(g.timeline.slice(history.timeline))}:{active:publicActivation(g.active),lastActivation:publicActivation(g.lastActivation),activations:g.activations.map(publicActivation),allActivations:g.allActivations.map(publicActivation),timeline:copy(g.timeline)})};
 }
 export function choiceView(c){
  if(!c)return null;
  return {id:c.id,token:c.token,prompt:c.prompt,context:copy(c.context??{}),opts:c.opts.map(o=>({...copy(o),v:c.context?.kind==='player'?{playerId:o.v.id}:copy(o.v)}))};
 }
-export function hydrateView(v,id){
+export function hydrateView(v,id,previous=null){
+ if(v.historyFrom){const {activations,timeline}=v.historyFrom;if(activations>(previous?.allActivations?.length??0)||timeline>(previous?.timeline?.length??0))throw Error('Missing history prefix');const allActivations=[...(previous?.allActivations??[]).slice(0,activations),...v.allActivations],entries=[...(previous?.timeline??[]).slice(0,timeline),...v.timeline];const current=allActivations.filter(a=>a.round===v.round),find=seq=>seq==null?null:allActivations.find(a=>a.seq===seq)??null;const {historyFrom,activeSeq,lastActivationSeq,...rest}=v;v={...rest,allActivations,activations:current,timeline:entries,active:find(activeSeq),lastActivation:find(lastActivationSeq)}}
  const g={...v,deck:Array(v.deckCount).fill(null),used:new Set(v.used),events:new Set(v.events)};
  g.pendingCards=()=>[...g.p[id].hand,...g.grave,...g.p.map(p=>p.power).filter(Boolean)].filter(c=>v.pending.includes(c.id));
  g.playable=c=>c.kind==='action'||c.kind==='event'&&!g.events.has(c.id);
@@ -113,7 +113,7 @@ export function installLan(Controller,{newProfile,cleanName,createCpuPolicy,PART
  const peer=n.peer=m.role==='host'?new PeerCtor(id,peerOptions()):new PeerCtor(peerOptions());
  n.timer=setTimeout(()=>{networkLog(n.role,'timeout',{stage:n.stage});fail('接続がタイムアウトしました（'+({signaling:'接続先登録',direct:'端末間通信',join:'ルーム応答'}[n.stage]??'接続')+'）')},30000);
  peer.on('error',e=>{networkLog(n.role,'signaling-error',{type:e.type});fail(e.type==='unavailable-id'?'その合言葉のルームが既に存在します':e.type==='peer-unavailable'?'ルームが見つかりません':'接続できませんでした')});
- peer.on('open',()=>{if(this.net!==n)return;networkLog(n.role,'signaling-open');if(n.role==='host'){this.modes=['human','cpu','cpu','cpu'];this.profiles=[profile,...[1,2,3].map(newProfileSafe)];n.ready=true;clearTimeout(n.timer);this.go('room');n.interval=setInterval(()=>this.heartbeat(),1000)}else{n.stage='direct';const conn=n.conn=peer.connect(id,{reliable:true,serialization:'binary'});observeConnection(conn,n.role);conn.on('open',()=>{n.stage='join';networkLog(n.role,'join-sent');conn.send({type:'join',name,appearance:profile.appearance,power:normalizePower(profile.power)})});conn.on('data',msg=>{if(this.net!==n)return;n.lastSeen=Date.now();if(msg?.type==='ping'){if(conn.open)conn.send({type:'pong'});return}if(msg?.type==='error'){if(!n.ready)fail(msg.message);else this.notify(msg.message);return}if(msg?.type==='state'){clearTimeout(n.timer);if(!n.ready){networkLog(n.role,'join-accepted');n.interval=setInterval(()=>this.heartbeat(),1000)}n.ready=true;this.receiveState(msg)}else if(msg?.type==='visual'&&n.ready)this.animateRemote(msg.event)});conn.on('close',()=>fail('ホストとの接続が切断されました'));conn.on('error',()=>fail('ホストとの接続に失敗しました'))}});
+ peer.on('open',()=>{if(this.net!==n)return;networkLog(n.role,'signaling-open');if(n.role==='host'){this.modes=['human','cpu','cpu','cpu'];this.profiles=[profile,...[1,2,3].map(newProfileSafe)];n.ready=true;clearTimeout(n.timer);this.go('room');n.interval=setInterval(()=>this.heartbeat(),1000)}else{n.stage='direct';const conn=n.conn=peer.connect(id,{reliable:true,serialization:'binary'});observeConnection(conn,n.role);conn.on('open',()=>{n.stage='join';networkLog(n.role,'join-sent');conn.send({type:'join',name,appearance:profile.appearance,power:normalizePower(profile.power),historyDelta:true})});conn.on('data',msg=>{if(this.net!==n)return;n.lastSeen=Date.now();if(msg?.type==='ping'){if(conn.open)conn.send({type:'pong'});return}if(msg?.type==='error'){if(!n.ready)fail(msg.message);else this.notify(msg.message);return}if(msg?.type==='state'){clearTimeout(n.timer);if(!n.ready){networkLog(n.role,'join-accepted');n.interval=setInterval(()=>this.heartbeat(),1000)}n.ready=true;this.receiveState(msg)}else if(msg?.type==='visual'&&n.ready)this.animateRemote(msg.event)});conn.on('close',()=>fail('ホストとの接続が切断されました'));conn.on('error',()=>fail('ホストとの接続に失敗しました'))}});
  peer.on('connection',conn=>{if(this.net!==n||n.role!=='host'){conn.close();return}observeConnection(conn,n.role);this.hostConnection(n,conn)});
  }catch(e){if(n&&this.net===n)this.stopNetwork();m.waiting=false;m.error=e.message;this.render()}
  };
@@ -130,7 +130,7 @@ export function installLan(Controller,{newProfile,cleanName,createCpuPolicy,PART
  const result=classifyJoin(records,name,this.page!=='room',this.modes.length);if(result.error){reject(result.error);return}
  if(result.resume){member=result.resume.record;member.connected=true;member.conn=conn;const id=this.profiles.indexOf(member.profile);this.modes[id]=member.mode;if(this.g&&this.page!=='room'){if(member.mode==='human')this.g.humanPlayers.add(id);else this.g.humanPlayers.delete(id)}}
  else{const profile=newProfile(this.profiles.length);profile.humanName=name;profile.appearance=this.validAppearance(msg.appearance,profile.appearance);profile.power=normalizePower(msg.power);this.profiles.push(profile);this.modes.push('human');member={profile,connected:true,conn,mode:'human'};n.members.push(member)}
- member.lastSeen=Date.now();member.lastPing=0;member.onLost=closedFn;if(result.resume){this.notify(member.profile.humanName+' が再接続しました');this.broadcast(true)}else{this.render();this.broadcast(true)}return}
+ member.historyDelta=msg.historyDelta===true;member.historyGame=null;member.historyCursor=null;member.last=null;member.lastSeen=Date.now();member.lastPing=0;member.onLost=closedFn;if(result.resume){this.notify(member.profile.humanName+' が再接続しました');this.broadcast(true)}else{this.render();this.broadcast(true)}return}
  if(member.conn!==conn||!member.connected)return;member.lastSeen=Date.now();if(msg.type==='pong')return;this.hostAction(member,msg)});
  };
  P.validAppearance=function(a,def){return Object.fromEntries(Object.entries(PARTS).map(([key,values])=>[key,Number.isInteger(a?.[key])&&a[key]>=0&&a[key]<values.length?a[key]:def[key]]))};
@@ -155,16 +155,18 @@ export function installLan(Controller,{newProfile,cleanName,createCpuPolicy,PART
  const memberIds=[0,...n.members.map(m=>this.profiles.indexOf(m.profile))],disconnected=n.members.filter(m=>!m.connected).map(m=>this.profiles.indexOf(m.profile));
  for(const m of n.members){if(!m.connected||!m.conn?.open)continue;const id=this.profiles.indexOf(m.profile);if(id<0)continue;
  const battle=['battle','result'].includes(this.page)&&this.g;
+ // The newest activation and log entry may still change. Replace those along with any appended suffix.
+ const cursor=battle&&m.historyDelta?(m.historyGame===this.g&&!force?m.historyCursor:null)??{activations:0,timeline:0}:null;
  const f=this.flow,flow=f?copy(Object.fromEntries(['kind','before','order','values','stage','ready','result','index','total'].filter(k=>f[k]!==undefined).map(k=>[k,f[k]]))):null;
  if(this.testMode)n.stateBuilds=(n.stateBuilds??0)+1;
- const state={type:'state',id,page:this.page,profiles:copy(this.profiles),modes:[...this.modes],memberIds,disconnected,room:{rounds:this.room.rounds,hp:this.room.hp,chance:this.room.chance,powerEnabled:this.room.powerEnabled===true,deckId:this.room.deckId,deckName:this.deckName(),seed:''},busy:this.busy,actionSeq:this.actionSeq??0,game:battle?playerView(this.g,id):null,choice:battle?choiceView(this.pending.get(id)):null,flow:battle?flow:null};
- const serialized=JSON.stringify(state);if(force||serialized!==m.last){try{m.conn.send(state);m.last=serialized}catch{}}
+ const state={type:'state',id,page:this.page,profiles:copy(this.profiles),modes:[...this.modes],memberIds,disconnected,room:{rounds:this.room.rounds,hp:this.room.hp,chance:this.room.chance,powerEnabled:this.room.powerEnabled===true,deckId:this.room.deckId,deckName:this.deckName(),seed:''},busy:this.busy,actionSeq:this.actionSeq??0,game:battle?playerView(this.g,id,cursor):null,choice:battle?choiceView(this.pending.get(id)):null,flow:battle?flow:null};
+ const serialized=JSON.stringify(state);if(force||serialized!==m.last){try{m.conn.send(state);m.last=serialized;m.historyGame=battle?this.g:null;m.historyCursor=cursor?{activations:Math.max(0,this.g.allActivations.length-1),timeline:Math.max(0,this.g.timeline.length-1)}:null;if(this.testMode)n.stateBytes=(n.stateBytes??0)+new TextEncoder().encode(serialized).length}catch{}}
  }
  };
  P.receiveState=function(msg){
  const n=this.net;if(n?.role!=='guest')return;if(msg.page==='error'){n.fail('ホスト側で対戦を続行できなくなりました');return}const first=n.id===0&&!n.received,oldPage=this.page,oldActionSeq=n.actionSeq,oldChoice=this.choice,oldFlow=this.flow,selectedIndex=oldChoice?.opts.indexOf(oldChoice.selected),oldCard=this.selected?.id;
  n.received=true;n.actionSeq=msg.actionSeq;n.id=msg.id;n.memberIds=msg.memberIds;const previous=n.disconnected??[];n.disconnected=msg.disconnected;const dropped=n.disconnected.find(id=>!previous.includes(id)),returned=previous.find(id=>!n.disconnected.includes(id));if(n.received&&!first&&(dropped!==undefined||returned!==undefined)){const id=dropped??returned;this.notice=(msg.profiles[id]?.humanName??'プレイヤー')+(dropped!==undefined?' が切断しました（CPU代行）':' が再接続しました');clearTimeout(this.noticeTimer);this.noticeTimer=setTimeout(()=>{this.notice=null;this.render()},2200)}this.view=msg.id;this.modes=msg.modes;this.profiles=msg.profiles;this.room={...msg.room};this.busy=msg.busy;
- this.g=msg.game?hydrateView(msg.game,msg.id):null;this.choice=msg.choice&&this.g?hydrateChoice(msg.choice,this.g):null;this.pending.clear();if(this.choice){if(oldChoice?.token===this.choice.token){this.choice.selected=this.choice.opts[selectedIndex]??null;if(this.collapsedModal===oldChoice)this.collapsedModal=this.choice}else{this.collapsedModal=null;this.filter={type:'all',trigger:'all',effect:'all',sort:'complex'};this.ui.offsets.delete('choice');this.ui.offsets.delete('vote')}this.pending.set(msg.id,this.choice)}
+ this.g=msg.game?hydrateView(msg.game,msg.id,this.g):null;this.choice=msg.choice&&this.g?hydrateChoice(msg.choice,this.g):null;this.pending.clear();if(this.choice){if(oldChoice?.token===this.choice.token){this.choice.selected=this.choice.opts[selectedIndex]??null;if(this.collapsedModal===oldChoice)this.collapsedModal=this.choice}else{this.collapsedModal=null;this.filter={type:'all',trigger:'all',effect:'all',sort:'complex'};this.ui.offsets.delete('choice');this.ui.offsets.delete('vote')}this.pending.set(msg.id,this.choice)}
  this.flow=msg.flow;if(oldFlow&&this.flow&&this.collapsedModal===oldFlow&&oldFlow.kind===this.flow.kind&&oldFlow.index===this.flow.index)this.collapsedModal=this.flow;
  this.selected=this.g?.p[msg.id].hand.find(c=>c.id===oldCard)??null;this.page=msg.page;this.winnerLarge=false;
  if(first||oldPage!==this.page){if(this.page==='room'){this.ui.clearAnimations();this.scene.cameras.main.resetFX()}this.endNativeText();this.aux=[];this.ui.offsets.clear();this.collapsedModal=null}

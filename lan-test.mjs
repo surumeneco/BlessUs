@@ -37,6 +37,20 @@ const c=hydrateChoice(choiceView({id:1,token:3,prompt:'選択',context:{kind:'pl
 const recovered=g.action(13,9);g.grave.push(recovered);const viewWithGrave=hydrateView(playerView(g,1),1);const graveChoice=hydrateChoice(choiceView({id:1,token:4,prompt:'墓地',context:{kind:'grave'},opts:[{v:recovered,label:'墓地'}]}),viewWithGrave);assert.equal(graveChoice.opts[0].v,viewWithGrave.grave.find(x=>x.id===recovered.id));
 assert.equal(c.opts[0].v,h.p[0]);assert.equal(c.opts[0].v.hand[0],null);
 console.log('PASS LAN room identification, reconnect classification, private state and choice hydration');
+const historyGame=new Game({players:2});historyGame.round=1;historyGame.p[0].hand=[historyGame.action(0,1)];
+for(let i=1;i<=100;i++){historyGame.allActivations.push({seq:i,round:1,kind:'ability',player:0,label:'能力',steps:[]});historyGame.timeline.push({round:1,turn:i,text:'公開ログ',activation:i,root:true})}
+historyGame.activations=[...historyGame.allActivations];historyGame.active=historyGame.lastActivation=historyGame.allActivations.at(-1);
+const full=playerView(historyGame,1),firstDelta=playerView(historyGame,1,{activations:0,timeline:0});let remote=hydrateView(firstDelta,1);
+assert.deepEqual(remote.allActivations,full.allActivations);assert.deepEqual(remote.activations,full.activations);assert.deepEqual(remote.active,full.active);assert.deepEqual(remote.p[0].hand,[null]);
+historyGame.active.steps.push([{label:'処理中'}]);historyGame.timeline.at(-1).cause=99;historyGame.timeline.push({round:1,turn:100,text:'追加ログ',activation:100});
+const next=playerView(historyGame,1,{activations:99,timeline:99});remote=hydrateView(next,1,remote);const latest=playerView(historyGame,1);
+assert.deepEqual(remote.allActivations,latest.allActivations);assert.deepEqual(remote.timeline,latest.timeline);assert.deepEqual(remote.active,latest.active);assert.deepEqual(remote.lastActivation,latest.lastActivation);assert.deepEqual(remote.activations,latest.activations);
+assert.ok(JSON.stringify(next).length<JSON.stringify(latest).length/4);
+console.log('PERF history snapshot bytes',Buffer.byteLength(JSON.stringify(latest)),Buffer.byteLength(JSON.stringify(next)));
+historyGame.round=2;historyGame.active=historyGame.lastActivation=null;historyGame.activations=[];remote=hydrateView(playerView(historyGame,1,{activations:99,timeline:100}),1,remote);assert.deepEqual(remote.activations,[]);assert.equal(remote.active,null);assert.equal(remote.lastActivation,null);assert.equal(remote.allActivations.length,100);
+const reconnect=hydrateView(playerView(historyGame,1,{activations:0,timeline:0}),1);assert.deepEqual(reconnect.timeline,remote.timeline);assert.deepEqual(reconnect.allActivations,remote.allActivations);
+const fresh=new Game({players:2});assert.deepEqual(hydrateView(playerView(fresh,1,{activations:0,timeline:0}),1,remote).allActivations,[]);
+console.log('PASS negotiated suffix synchronization, mutable tail, round boundary and reconnect/reset');
 
 const hidden={type:'move',reason:'draw',card:g.p[0].hand[0],from:{zone:'deck'},to:{zone:'hand',player:0}};
 assert.equal(visualView(hidden,1).card,null);assert.deepEqual(visualView(hidden,0).card,hidden.card);
