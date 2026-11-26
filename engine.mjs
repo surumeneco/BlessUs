@@ -7,7 +7,7 @@ const V=['コピー','削除','変更','追加'];
 // Presentation order is independent of stable numeric identifiers used in saves, rules and networking.
 const triggerOrder=Object.freeze([0,1,13,10,11,2,3,4,5,6,7,8,9,12,16,14,15]);
 const effectOrder=Object.freeze([0,1,14,21,2,15,3,4,5,19,6,7,17,11,16,18,12,8,20,9,10,13]);
-const presets=Object.freeze([{id:'default',name:'ベーシック',events:[[0,4],[1,1],[2,5],[3,10]],actions:[[0,0,6],[0,1,3],[0,2,4],[0,4,4],[0,10,2],[0,13,2],[1,9,4],[10,8,2],[11,21,1],[13,14,2]]}]);
+const presets=Object.freeze([{id:'default',name:'ベーシック',events:[[0,4],[1,1],[2,5],[3,10]],actions:[[0,0,6],[0,1,3],[0,2,4],[0,4,4],[0,10,2],[0,13,2],[0,9,4],[10,8,2],[11,21,1],[13,14,2]]}]);
 const presetCards=(id=presets[0].id)=>{
  const p=presets.find(x=>x.id===id);if(!p)throw Error('不明なプリセット');
  return [...p.events.flatMap(([event,n])=>Array.from({length:n},()=>({kind:'event',event}))),...p.actions.flatMap(([t,e,n])=>Array.from({length:n},()=>({kind:'action',t:[t],e:[{id:e,n:1}]})))];
