@@ -4,6 +4,14 @@ function makeEngine(){
 const T=['使用した時','捨てられた時','自分がダメージを受けた時','自分がダメージを与えた時','自分が体力を増やした時','他プレイヤーが体力を増やした時','自分がドローした時','他プレイヤーがドローした時','自分が手札を捨てた時','他プレイヤーが手札を捨てた時','自分のターン開始時','自分のターン終了時','他プレイヤーがアクションを獲得した時（通常獲得を除く）','手札に加わった時','自分のアビリティが発動した時','他プレイヤーのアビリティが発動した時','他プレイヤーがカードをコピーした時'];
 const E=['対象ダメージ','他全員ダメージ','自己回復','体力交換','自己ドロー','全員ドロー','自己捨札','対象ランダム捨札','アクション権','手札に残る','前回効果','手札譲渡','墓地を山札へ','ランダム効果','自己ダメージ','対象回復','手札取得','全員捨札','手札交換','墓地回収','ターン順反転','被ダメージ反撃'];
 const V=['コピー','削除','変更','追加'];
+// Presentation order is independent of stable numeric identifiers used in saves, rules and networking.
+const triggerOrder=Object.freeze([0,1,13,10,11,2,3,4,5,6,7,8,9,12,16,14,15]);
+const effectOrder=Object.freeze([0,1,14,21,2,15,3,4,5,19,6,7,17,11,16,18,12,8,20,9,10,13]);
+const presets=Object.freeze([{id:'default',name:'ベーシック',events:[[0,4],[1,1],[2,5],[3,10]],actions:[[0,0,6],[0,1,3],[0,2,4],[0,4,4],[0,10,2],[0,13,2],[1,9,4],[10,8,2],[11,21,1],[13,14,2]]}]);
+const presetCards=(id=presets[0].id)=>{
+ const p=presets.find(x=>x.id===id);if(!p)throw Error('不明なプリセット');
+ return [...p.events.flatMap(([event,n])=>Array.from({length:n},()=>({kind:'event',event}))),...p.actions.flatMap(([t,e,n])=>Array.from({length:n},()=>({kind:'action',t:[t],e:[{id:e,n:1}]})))];
+};
 const A=['初期体力+1','初期手札+1','初期トリガー追加','初期効果追加','終了時+1点','追加カード効果+1','効果2回(25%)','ターン終了時：他全員に1ダメージ（ラウンド限定）'];
 const uniqueE=new Set([3,9,10,12,18,20,21]); // effects without quantities
 const countE=new Set([0,1,2,4,5,6,7,8,11,13,14,15,16,17,19]);
@@ -17,8 +25,7 @@ class Game{
 constructor({players=4,rounds=3,hp=10,seed=1,deck=null,reviveChance=.25,humanPlayers=[],powerEnabled=false,powers=[]}={},choose=async(p,prompt,opts)=>opts[0]){
 if(!Number.isInteger(players)||players<2||players>6||!Number.isInteger(rounds)||rounds<1||!Number.isInteger(hp)||hp<1)throw Error('設定値が不正');
 this.cfg={players,rounds,hp,seed,reviveChance,powerEnabled:powerEnabled===true};this.seed=Number(seed)>>>0;this.choose=choose;this.id=0;this.round=0;this.turn=0;this.turns=0;this.direction=1;this.phase='ready';this.p=Array.from({length:players},(_,i)=>({id:i,hp,dead:false,score:0,hand:[],abilities:[],ap:0,damageTaken:0}));for(const p of this.p){const power=normalizePower(powers?.[p.id]);p.power=power?{...power,id:-p.id-1}:null;p.roundPower=0}this.seats=this.p.map(p=>p.id);this.humanPlayers=new Set(humanPlayers);this.log=[];this.timeline=[];this.activations=[];this.allActivations=[];this.activationSeq=0;this.resolvingEntries=[];this.pendingGroups=new Set();this.votingResults=[];this.onRoundResult=null;this.onGenerated=null;this.onVotes=null;for(const p of this.p){p.roundScores=[];p.voteScore=0;p.lastRank=0}this.history=[];this.queue=[];this.fallen=[];this.deck=[];this.grave=[];this.used=new Set();this.events=new Set();this.active=null;this.lastActivation=null;this.onActivation=null;this.onEffect=null;
-if(deck){if(deck.length<40||deck.length>60||V.some((_,i)=>!deck.some(c=>c.kind==='event'&&c.event===i)))throw Error('デッキは40〜60枚、各イベント1枚以上');this.deck=deck.map(c=>c.kind==='event'?this.event(c.event):this.action(c.t[0],c.e[0].id));}
-else{for(const [event,n] of [[0,8],[1,1],[2,5],[3,6]])for(let j=0;j<n;j++)this.deck.push(this.event(event));for(const [trigger,effect,n] of [[0,0,12],[0,1,4],[0,2,3],[0,4,2],[0,13,4],[0,8,2],[0,7,1],[2,0,1],[11,0,1]])for(let j=0;j<n;j++)this.deck.push(this.action(trigger,effect));}
+deck??=presetCards();if(deck){if(deck.length<40||deck.length>60||V.some((_,i)=>!deck.some(c=>c.kind==='event'&&c.event===i)))throw Error('デッキは40〜60枚、各イベント1枚以上');this.deck=deck.map(c=>c.kind==='event'?this.event(c.event):this.action(c.t[0],c.e[0].id));}
 }
 rnd(){this.seed=(Math.imul(this.seed,1664525)+1013904223)>>>0;return this.seed/4294967296}
 int(n){return Math.floor(this.rnd()*n)}
@@ -197,6 +204,6 @@ this.phase='upgrade';await Promise.all(this.order().map(p=>this.upgradePlayer(p)
 const grave=this.grave.splice(0);this.deck.push(...grave);if(grave.length)this.observe({type:'shuffle',count:grave.length,from:{zone:'grave'},to:{zone:'deck'}});for(const p of this.p){const hand=p.hand.splice(0);this.deck.push(...hand);for(const c of hand)this.move(c,{zone:'hand',player:p.id},{zone:'deck'},'collect')}this.phase='between';}
 
 }
-return {Game,T,E,V,A,labelsE,describe,formatCard,effectLabel,cardEffectLabel}
+return {Game,T,E,V,A,labelsE,describe,formatCard,effectLabel,cardEffectLabel,presets,presetCards,triggerOrder,effectOrder}
 }
-export const {Game,T,E,V,A,labelsE,describe,formatCard,effectLabel,cardEffectLabel}=makeEngine();
+export const {Game,T,E,V,A,labelsE,describe,formatCard,effectLabel,cardEffectLabel,presets,presetCards,triggerOrder,effectOrder}=makeEngine();
