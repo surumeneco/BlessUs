@@ -25,7 +25,7 @@ export const PE=[
  ['ランダムな効果発動',1,6,null],['つアビリティを失う',-5,6,null,true],
  ['ポイント獲得',6,6,null,true]
 ];
-export function powerEffectLabel(id,n=1){return id===21?(n===1?'ランダムな効果発動':n+'回ランダムな効果発動'):n+PE[id][0]}
+export function powerEffectLabel(id,n=1){return id===21?n+'回ランダムな効果発動':n+PE[id][0]}
 export function powerScore(p){return PT[p.t[0]][1]+p.e.reduce((s,e)=>s+PE[e.id][1]*e.n,0)}
 export function powerCount(p){return p.e.reduce((s,e)=>s+e.n,0)}
 export function normalizePower(value){
