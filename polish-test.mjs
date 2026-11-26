@@ -44,7 +44,7 @@ const referenced=await verifyRows([{id:0,n:3},{id:2,n:2}],{replay:true});assert.
 
 // Exercise the actual controller's lifecycle without a browser; the browser suite exercises UI and network.
 const ControllerForLifecycle=new Function('sleep',appSource.slice(appSource.indexOf('class Controller{'),appSource.indexOf('installLan(Controller,')).trim()+';return Controller;')(ms=>new Promise(r=>setTimeout(r,ms)));
-const lifecycle=()=>Object.assign(Object.create(ControllerForLifecycle.prototype),{g:{phase:'play'},page:'battle',busy:false,abort:false,pending:new Map(),hidden:new Set([1]),handOffsets:new Map(),aux:[],events:[1],generated:[1],trace:[1],ui:{cancel(){},clearAnimations(){}},scene:{cameras:{main:{resetFX(){}}}},render(){},go(page){this.page=page;this.aux=[]},flush(){this.flushCount=(this.flushCount??0)+1},cpu(){return false}});
+const lifecycle=()=>Object.assign(Object.create(ControllerForLifecycle.prototype),{g:{phase:'play'},page:'battle',busy:false,abort:false,pending:new Map(),hidden:new Set([1]),handOffsets:new Map(),aux:[],events:[1],generated:[1],trace:[1],ui:{cancel(){},clearAnimations(){}},scene:{cameras:{main:{resetFX(){}}}},render(){},isGuest(){return false},go(page){this.page=page;this.aux=[]},flush(){this.flushCount=(this.flushCount??0)+1},cpu(){return false}});
 {
  const c=lifecycle();let reject;const old=c.run(()=>new Promise((_,r)=>reject=r));c.pending.set(0,{reject});c.closeGame();await old;assert.equal(c.page,'room');assert.equal(c.busy,false);assert.equal(c.g,null);assert.equal(c.pending.size,0);assert.equal(c.hidden.size,0);assert.deepEqual(c.events,[]);
 }

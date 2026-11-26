@@ -71,10 +71,11 @@ this.recordChange(c,p.id);this.say('P'+(p.id+1)+' がカードを'+(mode==='chan
 group(origin){return {origin,entries:[],seq:0,cause:this.active?.seq??null}}
 emit(g,type,subject,actor=null,card=null){
 const matches=(p,c,t)=>{switch(t){case 0:return type==='use'&&c===card;case 1:return type==='discard'&&c===card;case 2:return type==='damage'&&p===subject;case 3:return type==='damage'&&p===actor;case 4:return type==='heal'&&p===subject;case 5:return type==='heal'&&p!==subject;case 6:return type==='draw'&&p===subject;case 7:return type==='draw'&&p!==subject;case 8:return type==='discard'&&p===subject;case 9:return type==='discard'&&p!==subject;case 10:return type==='start'&&p===subject;case 11:return type==='end'&&p===subject;case 12:return type==='ap'&&p!==subject;case 13:return type==='hand'&&c===card;case 14:return type==='ability'&&p===subject;case 15:return type==='ability'&&p!==subject;case 16:return type==='copy'&&p!==subject;default:return false}};
-for(const p of this.order(g.origin)){for(let i=0;i<p.hand.length;i++){const c=p.hand[i];if(c.kind!=='action')continue;
-for(const t of c.t){const k=c.id+':'+t;if(!this.used.has(k)&&matches(p,c,t)){const entry={c,t,p:p.id,pos:i,seq:g.seq++,order:this.order(g.origin).map(x=>x.id)};if(g.lineEvents)g.lineEvents.push(entry);else this.registerReaction(g,entry)}}}
+const ordered=this.order(g.origin),order=ordered.map(p=>p.id);
+for(const p of ordered){for(let i=0;i<p.hand.length;i++){const c=p.hand[i];if(c.kind!=='action')continue;
+for(const t of c.t){const k=c.id+':'+t;if(!this.used.has(k)&&matches(p,c,t)){const entry={c,t,p:p.id,pos:i,seq:g.seq++,order};if(g.lineEvents)g.lineEvents.push(entry);else this.registerReaction(g,entry)}}}
 const c=p.power;if(this.cfg.powerEnabled&&c&&powerMatches(p,c.t[0],type,subject,actor)&&!this.used.has(c.id+':'+c.t[0])){
-const entry={c,t:c.t[0],p:p.id,pos:Number.MAX_SAFE_INTEGER,seq:g.seq++,order:this.order(g.origin).map(x=>x.id)};
+const entry={c,t:c.t[0],p:p.id,pos:Number.MAX_SAFE_INTEGER,seq:g.seq++,order};
 if(g.lineEvents)g.lineEvents.push(entry);else this.registerReaction(g,entry)}
 }
 }
