@@ -87,7 +87,6 @@ export function visualView(e,id){
 
 export function installLan(Controller,{newProfile,cleanName,createCpuPolicy,PARTS,rect,C}){
  const P=Controller.prototype;
- const bindGame=P.bindGame;
  P.ownId=function(){return this.net?.role==='guest'?this.net.id:0};
  P.isGuest=function(){return this.net?.role==='guest'};
  P.isMember=function(id){return id===0||!!this.net?.members?.some(m=>this.profiles[id]===m.profile)||!!this.net?.memberIds?.includes(id)};
@@ -175,8 +174,8 @@ export function installLan(Controller,{newProfile,cleanName,createCpuPolicy,PART
  P.send=function(msg){if(this.isGuest()&&this.net.conn?.open)this.net.conn.send(['play','end'].includes(msg.type)?{...msg,seq:this.net.actionSeq}:msg)};
  P.profileChanged=function(){if(this.isGuest())this.send({type:'profile',appearance:this.appearance(this.ownId()),power:normalizePower(this.profiles[this.ownId()]?.power)});this.renderState()};
  P.toggleMode=function(id){if(id!==this.ownId()||this.page!=='room')return;const mode=this.cpu(id)?'human':'cpu';if(this.isGuest())this.send({type:'profile',mode});else{this.modes[id]=mode;this.renderState()}};
- P.bindGame=function(g){
- bindGame.call(this,g);if(this.net?.role!=='host')return;
+ P.bindLanGame=function(g){
+ if(this.net?.role!=='host')return;
  const emit=g.onVisual,activate=g.onActivation;
  g.onVisual=e=>{if(!this.gameCurrent(g))return;const kind=g.active?.progress?.at(-1)?.kind;if(kind==='line'||kind==='random'||kind==='settlement')emit({...e,remoteDeferred:true});else{emit(e);this.sendVisual(id=>visualView(e,id))}};
  g.onActivation=async info=>{this.checkGame(g);if(info)this.sendVisual(()=>({type:'activation',activation:publicActivation(info)}));return activate(info)};
