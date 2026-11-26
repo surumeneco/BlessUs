@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import {Game} from './engine.mjs';
+import {Game,T} from './engine.mjs';
+import {choiceView,hydrateChoice} from './lan.mjs';
 import {logLayout,activationContext} from './log-layout.mjs';
 const entries=[{index:1,activation:10,root:true},{index:2,activation:10},{index:3,activation:20,root:true},{index:4,activation:30,root:true},{index:5,activation:20},{index:6,cause:10}];
 const acts=[{seq:10},{seq:20,cause:10},{seq:30,cause:10}];
@@ -52,4 +53,24 @@ const lifecycle=()=>Object.assign(Object.create(ControllerForLifecycle.prototype
 {
  const c=lifecycle();c.aux=[{}];const old=c.waitModal();c.closeGame();c.g={phase:'play'};c.abort=false;c.page='battle';await assert.rejects(old,/対戦中断/);
 }
+{
+ const c=lifecycle();c.pending.set(1,{token:1});c.closeGame();assert.equal(c.page,'room');assert.equal(c.busy,false);assert.equal(c.g,null);assert.equal(c.pending.size,0);
+}
 console.log('PASS abort resets room, stale run and modal cannot affect restarted match');
+
+// Real engine choices, including the context projected to the guest, drive the actual UI copy.
+const promptForModification=new Function(appSource.slice(appSource.indexOf('function promptText('),appSource.indexOf('const publicLog=')).trim()+';return promptText;')();
+const suffix='するアクションカードを選んでください';
+for(const [id,expected] of [[15,'トリガーを追加'],[16,'効果を追加'],[17,'トリガーを変更'],[18,'効果を変更']]){
+ let shown;const game=new Game({players:2},async(id,prompt,opts,context)=>{if(prompt==='改変する手札'){shown={id,token:1,prompt,opts,context};}return opts[0]});const player=game.p[0];player.hand=[game.action(0,0)];await game.powerEffect(player,id,game.group(0),{}, {unpaid:0},[]);assert.ok(shown);assert.equal(promptForModification(shown.prompt,shown.context),expected+suffix);const remote=hydrateChoice(choiceView(shown),game);assert.equal(promptForModification(remote.prompt,remote.context),expected+suffix);
+}
+for(const [event,mode] of [[2,'変更'],[3,'追加']])for(const saturated of [false,true]){
+ const seen=[];const game=new Game({players:2},async(id,prompt,opts,context)=>{seen.push({prompt,opts,context});return opts[0]});const player=game.p[0],card=game.action(0,0);if(saturated)card.t=T.map((_,i)=>i);player.hand=[card];await game.eventEffect(player,game.event(event));const target=seen.find(c=>c.prompt==='改変する手札'),kind=seen.find(c=>c.prompt==='改変対象');assert.equal(promptForModification(target.prompt,target.context),(saturated?'効果':'トリガーまたは効果')+'を'+mode+suffix);assert.deepEqual(kind.opts.map(o=>o.v),saturated?['e']:['t','e']);
+}
+{
+ const seen=[];const game=new Game({players:2},async(id,prompt,opts,context)=>{seen.push({prompt,opts,context});return opts.find(o=>prompt==='ラウンド終了：デッキ改変'&&o.v===1)??opts[0]});const player=game.p[0],card=game.action(0,0);card.t=T.map((_,i)=>i);player.hand=[card];await game.upgradePlayer(player);const target=seen.find(c=>c.prompt==='改変する手札'),kind=seen.find(c=>c.prompt==='改変対象');assert.equal(promptForModification(target.prompt,target.context),'効果を追加'+suffix);assert.deepEqual(kind.opts.map(o=>o.v),['e','back']);
+}
+{
+ const game=new Game({players:2},async()=>{throw Error('impossible trigger choice must not be shown')});const player=game.p[0],card=game.action(0,0);card.t=T.map((_,i)=>i);player.hand=[card];await game.powerEffect(player,15,game.group(0),{}, {unpaid:0},[]);assert.equal(card.t.length,T.length);
+}
+console.log('PASS precise power, event and upgrade modification prompts including guest context and exhausted triggers');

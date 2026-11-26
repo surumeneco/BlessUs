@@ -1,5 +1,5 @@
 import {PALETTE} from './player-profile.mjs?v=native-1';
-import {T,V,effectLabel,cardEffectLabel} from './engine.mjs?v=power-1';
+import {T,V,effectLabel,cardEffectLabel} from './engine.mjs?v=modification-prompts-1';
 import {PT,PE,powerEffectLabel,powerEffectDetail,powerScore} from './power.mjs';
 export const C={bg:0xf4f2fa,paper:0xfdfcff,ink:0x44364f,muted:0x766780,line:0xdad4e5,purple:0x7555b7,lav:0xeee6fa,teal:0x78cec8,table:0xa5dece,green:0x338b75,gold:0xc58b21,glow:0xa56be9,red:0xb45b40,greenInk:0x1d634e,goldInk:0x765013,redInk:0x8f3b29};
 export const COLORS=[0xb8a2eb,0x78cec8,0xf6a38e,0xf7c865,0x91b8ed,0xeaa7ca];
