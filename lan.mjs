@@ -87,7 +87,7 @@ export function visualView(e,id){
 
 export function installLan(Controller,{newProfile,cleanName,createCpuPolicy,PARTS,rect,C}){
  const P=Controller.prototype;
- const original=Object.fromEntries(['render','go','choose','setChoice','accept','use','canUse','start','closeGame','finishFlow','run','bindGame','close','removePlayer','addPlayer','changeName','openAppearance'].map(k=>[k,P[k]]));
+ const bindGame=P.bindGame;
  P.ownId=function(){return this.net?.role==='guest'?this.net.id:0};
  P.isGuest=function(){return this.net?.role==='guest'};
  P.isMember=function(id){return id===0||!!this.net?.members?.some(m=>this.profiles[id]===m.profile)||!!this.net?.memberIds?.includes(id)};
@@ -95,13 +95,10 @@ export function installLan(Controller,{newProfile,cleanName,createCpuPolicy,PART
  P.isDisconnected=function(id){return !!(this.member(id)&&!this.member(id).connected||this.net?.disconnected?.includes(id))};
  P.canEditRoom=function(){return !this.isGuest()};
  P.canRemove=function(id){return this.canEditRoom()&&!this.isMember(id)&&this.modes.length>2};
- P.name=function(id){const p=this.profiles[id];return (this.isMember(id)?p?.humanName:this.cpu(id)?p?.cpuName:p?.humanName)||'P'+(id+1)};
  P.localRoom=function(){this.resetRoom();this.go('room')};
  P.resetRoom=function(){const old=this.profiles[this.ownId()]??newProfile(0);if(this.isGuest())this.room=this.net.localRoom??{rounds:3,hp:10,chance:25,deckId:'default',seed:'',powerEnabled:false};this.discardGame();this.stopNetwork();this.modes=['human','cpu','cpu','cpu'];this.profiles=[old,...[1,2,3].map(newProfileSafe)];this.view=0;this.abort=false};
  function newProfileSafe(i){return newProfile(i)}
- P.close=function(){if(this.aux.at(-1)?.kind==='connect'&&!this.net?.ready)this.stopNetwork();return original.close.call(this)};
  P.stopNetwork=function(){const n=this.net;this.net=null;if(n){clearTimeout(n.timer);clearInterval(n.interval);n.peer?.destroy()}};
- P.go=function(page){if(page==='home'&&this.net){this.resetRoom();this.abort=true}if(page==='room'&&this.isGuest()&&this.page==='result'){this.notify('ホストがルームへ戻るまでお待ちください');return}original.go.call(this,page)};
  P.drawMultiplayer=function(m){const u=this.ui;if(m.kind==='multi'){u.modal('みんなで遊ぶ',400,190,()=>this.close(),r=>{u.button('create-room','ルームを作成',rect(r.x,r.y,r.w,44),()=>{this.close();this.open('connect',{role:'host',name:this.profiles[0].humanName,pass:''})},{primary:true});u.button('join-room','ルームに参加',rect(r.x,r.y+54,r.w,44),()=>{this.close();this.open('connect',{role:'guest',name:this.profiles[0].humanName,pass:''})})});return}
  u.modal(m.role==='host'?'ルームを作成':'ルームに参加',450,255,()=>{this.stopNetwork();this.close()},(r,o)=>{u.button('network-name','名前：'+(m.name||'未入力'),rect(r.x,r.y,r.w,39),()=>this.editText('プレイヤー名',m.name,v=>{m.name=cleanName(v);this.render()}),{disabled:!!m.waiting});u.button('network-pass','合言葉：'+(m.pass||'未入力'),rect(r.x,r.y+48,r.w,39),()=>this.editText('合言葉',m.pass,v=>{m.pass=v;this.render()}),{disabled:!!m.waiting});u.text(m.error??(m.waiting?'接続中…':'同じLAN内での直接通信を推奨します'),r.x,r.y+98,13,{width:r.w,color:m.error?C.redInk:C.muted});u.button('network-connect',m.role==='host'?'作成する':'参加する',rect(o.x+o.w-120,o.y+o.h-49,108,38),()=>this.connectRoom(m),{primary:true,disabled:!!m.waiting||!m.name||!m.pass})})};
  P.connectRoom=async function(m){
@@ -176,15 +173,10 @@ export function installLan(Controller,{newProfile,cleanName,createCpuPolicy,PART
  this.render();
  };
  P.send=function(msg){if(this.isGuest()&&this.net.conn?.open)this.net.conn.send(['play','end'].includes(msg.type)?{...msg,seq:this.net.actionSeq}:msg)};
- P.run=function(fn){this.actionSeq=(this.actionSeq??0)+1;return original.run.call(this,fn)};
  P.profileChanged=function(){if(this.isGuest())this.send({type:'profile',appearance:this.appearance(this.ownId()),power:normalizePower(this.profiles[this.ownId()]?.power)});this.renderState()};
- P.changeName=function(id){if(id!==this.ownId())return;this.editText('名前を変更',this.name(id),v=>{const name=cleanName(v);if(!name)return;if(this.isGuest()){this.send({type:'profile',name});return}if(this.net&&!this.uniqueName(name,id)){this.notify('同じ名前は使用できません');return}this.profiles[id].humanName=name;this.renderState()})};
  P.toggleMode=function(id){if(id!==this.ownId()||this.page!=='room')return;const mode=this.cpu(id)?'human':'cpu';if(this.isGuest())this.send({type:'profile',mode});else{this.modes[id]=mode;this.renderState()}};
- P.addPlayer=function(mode){if(mode==='cpu'&&this.canEditRoom())original.addPlayer.call(this,mode)};
- P.removePlayer=function(id){if(this.canRemove(id))original.removePlayer.call(this,id)};
- P.openAppearance=function(){const id=this.ownId();this.ui.offsets.delete('appearance');this.open('appearance',{id,part:'color'})};
  P.bindGame=function(g){
- original.bindGame.call(this,g);if(this.net?.role!=='host')return;
+ bindGame.call(this,g);if(this.net?.role!=='host')return;
  const emit=g.onVisual,activate=g.onActivation;
  g.onVisual=e=>{if(!this.gameCurrent(g))return;const kind=g.active?.progress?.at(-1)?.kind;if(kind==='line'||kind==='random'||kind==='settlement')emit({...e,remoteDeferred:true});else{emit(e);this.sendVisual(id=>visualView(e,id))}};
  g.onActivation=async info=>{this.checkGame(g);if(info)this.sendVisual(()=>({type:'activation',activation:publicActivation(info)}));return activate(info)};
@@ -214,13 +206,4 @@ export function installLan(Controller,{newProfile,cleanName,createCpuPolicy,PART
  else if(e.type==='shuffle'){const from=this.anchor(e.from),to=this.anchor(e.to);if(from&&to)jobs.push(u.fly(back,from,to,ms,{back:true,reason:'shuffle'}))}
  Promise.all(jobs).catch(()=>{});
  };
- P.start=function(){if(this.isGuest())return;return original.start.call(this)};
- P.choose=function(id,prompt,opts,context){if(this.abort)throw Error('対戦中断');if(this.cpu(id))return Promise.resolve(prompt==='ベストカード投票'?null:this.bot(id,prompt,opts,context));return new Promise((resolve,reject)=>{const c={id,prompt,opts,context,resolve,reject,selected:null,token:this.choiceSerial=(this.choiceSerial??0)+1};this.pending.set(id,c);if(id===this.ownId())this.setChoice(c);else this.renderState()})};
- P.setChoice=function(c){this.collapsedModal=null;this.choice=c?.id===this.ownId()?c:null;this.view=this.ownId();this.selected=null;this.filter={type:'all',trigger:'all',effect:'all',sort:'complex'};this.ui.offsets.delete('choice');this.ui.offsets.delete('vote');this.renderState()};
- P.accept=function(o){const c=this.choice;if(!c||!c.opts.includes(o))return;if(this.isGuest()){this.send({type:'choice',token:c.token,index:c.opts.indexOf(o)});return}this.pending.delete(c.id);this.setChoice(null);c.resolve(o)};
- P.canUse=function(){return original.canUse.call(this)&&this.view===this.ownId()};
- P.use=function(c){if(this.isGuest()){const current=this.g?.p[this.view]?.hand.find(card=>card?.id===c.id);if(this.canUse()&&current&&this.g.playable(current))this.send({type:'play',card:current.id});return}original.use.call(this,c)};
- P.endAction=function(){if(!this.canUse())return;if(this.isGuest())this.send({type:'end'});else this.run(()=>this.g.endTurn())};
- P.closeGame=function(){if(this.isGuest()){this.go('home');return}return original.closeGame.call(this)};
- P.finishFlow=function(){if(this.isGuest()){this.collapsedModal=this.flow;this.render();return}original.finishFlow.call(this)};
 }
