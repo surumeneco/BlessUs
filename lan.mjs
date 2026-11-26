@@ -117,16 +117,16 @@ export function installLan(Controller,{newProfile,cleanName,createCpuPolicy,PART
  const peer=n.peer=m.role==='host'?new PeerCtor(id,peerOptions()):new PeerCtor(peerOptions());
  n.timer=setTimeout(()=>{networkLog(n.role,'timeout',{stage:n.stage});fail('接続がタイムアウトしました（'+({signaling:'接続先登録',direct:'端末間通信',join:'ルーム応答'}[n.stage]??'接続')+'）')},30000);
  peer.on('error',e=>{networkLog(n.role,'signaling-error',{type:e.type});fail(e.type==='unavailable-id'?'その合言葉のルームが既に存在します':e.type==='peer-unavailable'?'ルームが見つかりません':'接続できませんでした')});
- peer.on('open',()=>{if(this.net!==n)return;networkLog(n.role,'signaling-open');if(n.role==='host'){this.modes=['human','cpu','cpu','cpu'];this.profiles=[profile,...[1,2,3].map(newProfileSafe)];n.ready=true;clearTimeout(n.timer);this.go('room');n.interval=setInterval(()=>{this.heartbeat();this.broadcast()},150)}else{n.stage='direct';const conn=n.conn=peer.connect(id,{reliable:true,serialization:'binary'});observeConnection(conn,n.role);conn.on('open',()=>{n.stage='join';networkLog(n.role,'join-sent');conn.send({type:'join',name,appearance:profile.appearance,power:normalizePower(profile.power)})});conn.on('data',msg=>{if(this.net!==n)return;n.lastSeen=Date.now();if(msg?.type==='ping'){if(conn.open)conn.send({type:'pong'});return}if(msg?.type==='error'){if(!n.ready)fail(msg.message);else this.notify(msg.message);return}if(msg?.type==='state'){clearTimeout(n.timer);if(!n.ready){networkLog(n.role,'join-accepted');n.interval=setInterval(()=>this.heartbeat(),1000)}n.ready=true;this.receiveState(msg)}else if(msg?.type==='visual'&&n.ready)this.animateRemote(msg.event)});conn.on('close',()=>fail('ホストとの接続が切断されました'));conn.on('error',()=>fail('ホストとの接続に失敗しました'))}});
+ peer.on('open',()=>{if(this.net!==n)return;networkLog(n.role,'signaling-open');if(n.role==='host'){this.modes=['human','cpu','cpu','cpu'];this.profiles=[profile,...[1,2,3].map(newProfileSafe)];n.ready=true;clearTimeout(n.timer);this.go('room');n.interval=setInterval(()=>this.heartbeat(),1000)}else{n.stage='direct';const conn=n.conn=peer.connect(id,{reliable:true,serialization:'binary'});observeConnection(conn,n.role);conn.on('open',()=>{n.stage='join';networkLog(n.role,'join-sent');conn.send({type:'join',name,appearance:profile.appearance,power:normalizePower(profile.power)})});conn.on('data',msg=>{if(this.net!==n)return;n.lastSeen=Date.now();if(msg?.type==='ping'){if(conn.open)conn.send({type:'pong'});return}if(msg?.type==='error'){if(!n.ready)fail(msg.message);else this.notify(msg.message);return}if(msg?.type==='state'){clearTimeout(n.timer);if(!n.ready){networkLog(n.role,'join-accepted');n.interval=setInterval(()=>this.heartbeat(),1000)}n.ready=true;this.receiveState(msg)}else if(msg?.type==='visual'&&n.ready)this.animateRemote(msg.event)});conn.on('close',()=>fail('ホストとの接続が切断されました'));conn.on('error',()=>fail('ホストとの接続に失敗しました'))}});
  peer.on('connection',conn=>{if(this.net!==n||n.role!=='host'){conn.close();return}observeConnection(conn,n.role);this.hostConnection(n,conn)});
  }catch(e){if(n&&this.net===n)this.stopNetwork();m.waiting=false;m.error=e.message;this.render()}
  };
  P.hostConnection=function(n,conn){
  let member=null,closed=false;const reject=message=>{try{conn.send({type:'error',message})}catch{};setTimeout(()=>conn.close(),200)};
  const closedFn=()=>{if(closed)return;closed=true;if(this.net!==n||!member||member.conn!==conn)return;member.connected=false;member.conn=null;const id=this.profiles.indexOf(member.profile);if(id<0)return;
- if(this.page==='room'){this.modes[id]='cpu';this.notify(member.profile.humanName+' が切断しました（CPU代行）');return}
+ if(this.page==='room'){this.modes[id]='cpu';this.notify(member.profile.humanName+' が切断しました（CPU代行）');this.broadcast();return}
  this.modes[id]='cpu';if(this.g){this.g.humanPlayers.delete(id);this.cpuPolicies[id]??=createCpuPolicy(this.g.cfg.seed,id);const c=this.pending.get(id);if(c){this.pending.delete(id);c.resolve(c.prompt==='ベストカード投票'?null:this.bot(id,c.prompt,c.opts,c.context))}if(!this.busy&&this.g.phase==='play'&&this.g.turn===id)this.run(async()=>{})}
- this.notify(member.profile.humanName+' が切断しました（CPU代行）')};
+ this.notify(member.profile.humanName+' が切断しました（CPU代行）');this.broadcast()};
  conn.on('close',closedFn);conn.on('error',closedFn);
  conn.on('data',msg=>{if(this.net!==n||closed||!msg||typeof msg!=='object')return;
  if(!member){if(msg.type!=='join')return;networkLog(n.role,'join-received');const name=cleanName(msg.name??'');if(!name){reject('名前を入力してください');return}
@@ -146,22 +146,23 @@ export function installLan(Controller,{newProfile,cleanName,createCpuPolicy,PART
  if(msg.appearance)member.profile.appearance=this.validAppearance(msg.appearance,member.profile.appearance);
  if('power'in msg)member.profile.power=normalizePower(msg.power);
  if(this.page==='room'){if(msg.name!==undefined){const name=cleanName(msg.name);if(!name||!this.uniqueName(name,id)){error('同じ名前は使用できません');return}member.profile.humanName=name}
- if(['human','cpu'].includes(msg.mode)){member.mode=msg.mode;this.modes[id]=msg.mode}}this.render();return}
+ if(['human','cpu'].includes(msg.mode)){member.mode=msg.mode;this.modes[id]=msg.mode}}this.renderState();return}
  if(this.page!=='battle'||!this.g||this.cpu(id))return;
- if(msg.type==='choice'){const c=this.pending.get(id);if(c&&c.token===msg.token&&Number.isInteger(msg.index)&&c.opts[msg.index]){this.pending.delete(id);c.resolve(c.opts[msg.index]);this.render()}return}
+ if(msg.type==='choice'){const c=this.pending.get(id);if(c&&c.token===msg.token&&Number.isInteger(msg.index)&&c.opts[msg.index]){this.pending.delete(id);c.resolve(c.opts[msg.index]);this.renderState()}return}
  if(msg.seq!==(this.actionSeq??0)||this.busy||this.pending.size||this.flow||this.g.phase!=='play'||this.g.turn!==id||this.g.p[id].dead||this.g.p[id].ap<1)return;
  if(msg.type==='play'){const c=this.g.p[id].hand.find(c=>c.id===msg.card);if(c&&this.g.playable(c))this.run(()=>this.g.play(c.id))}
  else if(msg.type==='end')this.run(()=>this.g.endTurn());
  };
- P.heartbeat=function(){const n=this.net;if(!n?.ready)return;const now=Date.now();if(n.role==='guest'){if(now-(n.lastSeen??now)>10000)n.fail('ホストとの通信が途絶えました');return}for(const m of n.members){if(!m.connected)continue;if(now-(m.lastSeen??now)>10000){const conn=m.conn;m.onLost?.();conn?.close();continue}if(now-(m.lastPing??0)>1000&&m.conn?.open){m.lastPing=now;try{m.conn.send({type:'ping'})}catch{}}}};
+ P.heartbeat=function(){const n=this.net;if(!n?.ready)return;const now=Date.now();if(n.role==='guest'){if(now-(n.lastSeen??now)>10000)n.fail('ホストとの通信が途絶えました');return}for(const m of n.members){if(!m.connected)continue;if(now-(m.lastSeen??now)>10000){const conn=m.conn;m.onLost?.();conn?.close();continue}if(now-(m.lastPing??0)>=1000&&m.conn?.open){m.lastPing=now;try{m.conn.send({type:'ping'})}catch{}}}};
  P.broadcast=function(force=false){
  const n=this.net;if(n?.role!=='host'||!n.ready)return;
  const memberIds=[0,...n.members.map(m=>this.profiles.indexOf(m.profile))],disconnected=n.members.filter(m=>!m.connected).map(m=>this.profiles.indexOf(m.profile));
  for(const m of n.members){if(!m.connected||!m.conn?.open)continue;const id=this.profiles.indexOf(m.profile);if(id<0)continue;
  const battle=['battle','result'].includes(this.page)&&this.g;
  const f=this.flow,flow=f?copy(Object.fromEntries(['kind','before','order','values','stage','ready','result','index','total'].filter(k=>f[k]!==undefined).map(k=>[k,f[k]]))):null;
+ if(this.testMode)n.stateBuilds=(n.stateBuilds??0)+1;
  const state={type:'state',id,page:this.page,profiles:copy(this.profiles),modes:[...this.modes],memberIds,disconnected,room:{rounds:this.room.rounds,hp:this.room.hp,chance:this.room.chance,powerEnabled:this.room.powerEnabled===true,deckId:this.room.deckId,deckName:this.deckName(),seed:''},busy:this.busy,actionSeq:this.actionSeq??0,game:battle?playerView(this.g,id):null,choice:battle?choiceView(this.pending.get(id)):null,flow:battle?flow:null};
- const serialized=JSON.stringify(state);if(force||serialized!==m.last){m.last=serialized;try{m.conn.send(state)}catch{}}
+ const serialized=JSON.stringify(state);if(force||serialized!==m.last){try{m.conn.send(state);m.last=serialized}catch{}}
  }
  };
  P.receiveState=function(msg){
@@ -172,19 +173,18 @@ export function installLan(Controller,{newProfile,cleanName,createCpuPolicy,PART
  this.selected=this.g?.p[msg.id].hand.find(c=>c.id===oldCard)??null;this.page=msg.page;this.winnerLarge=false;
  if(first||oldPage!==this.page){if(this.page==='room'){this.ui.clearAnimations();this.scene.cameras.main.resetFX()}this.endNativeText();this.aux=[];this.ui.offsets.clear();this.collapsedModal=null}
  if(this.drag){const current=this.g?.p[msg.id]?.hand.find(c=>c?.id===this.drag.c.id);if(oldActionSeq!==msg.actionSeq||!current||!this.canUse())this.ui.cancel();else this.drag.c=current}
- original.render.call(this);
+ this.render();
  };
- P.render=function(){original.render.call(this);if(this.net?.role==='host'&&this.net.ready)this.broadcast()};
  P.send=function(msg){if(this.isGuest()&&this.net.conn?.open)this.net.conn.send(['play','end'].includes(msg.type)?{...msg,seq:this.net.actionSeq}:msg)};
  P.run=function(fn){this.actionSeq=(this.actionSeq??0)+1;return original.run.call(this,fn)};
- P.profileChanged=function(){if(this.isGuest())this.send({type:'profile',appearance:this.appearance(this.ownId()),power:normalizePower(this.profiles[this.ownId()]?.power)});this.render()};
- P.changeName=function(id){if(id!==this.ownId())return;this.editText('名前を変更',this.name(id),v=>{const name=cleanName(v);if(!name)return;if(this.isGuest()){this.send({type:'profile',name});return}if(this.net&&!this.uniqueName(name,id)){this.notify('同じ名前は使用できません');return}this.profiles[id].humanName=name;this.render()})};
- P.toggleMode=function(id){if(id!==this.ownId()||this.page!=='room')return;const mode=this.cpu(id)?'human':'cpu';if(this.isGuest())this.send({type:'profile',mode});else{this.modes[id]=mode;this.render()}};
+ P.profileChanged=function(){if(this.isGuest())this.send({type:'profile',appearance:this.appearance(this.ownId()),power:normalizePower(this.profiles[this.ownId()]?.power)});this.renderState()};
+ P.changeName=function(id){if(id!==this.ownId())return;this.editText('名前を変更',this.name(id),v=>{const name=cleanName(v);if(!name)return;if(this.isGuest()){this.send({type:'profile',name});return}if(this.net&&!this.uniqueName(name,id)){this.notify('同じ名前は使用できません');return}this.profiles[id].humanName=name;this.renderState()})};
+ P.toggleMode=function(id){if(id!==this.ownId()||this.page!=='room')return;const mode=this.cpu(id)?'human':'cpu';if(this.isGuest())this.send({type:'profile',mode});else{this.modes[id]=mode;this.renderState()}};
  P.addPlayer=function(mode){if(mode==='cpu'&&this.canEditRoom())original.addPlayer.call(this,mode)};
  P.removePlayer=function(id){if(this.canRemove(id))original.removePlayer.call(this,id)};
  P.openAppearance=function(){const id=this.ownId();this.ui.offsets.delete('appearance');this.open('appearance',{id,part:'color'})};
  P.bindGame=function(g){
- original.bindGame.call(this,g);
+ original.bindGame.call(this,g);if(this.net?.role!=='host')return;
  const emit=g.onVisual,activate=g.onActivation;
  g.onVisual=e=>{if(!this.gameCurrent(g))return;const kind=g.active?.progress?.at(-1)?.kind;if(kind==='line'||kind==='random'||kind==='settlement')emit({...e,remoteDeferred:true});else{emit(e);this.sendVisual(id=>visualView(e,id))}};
  g.onActivation=async info=>{this.checkGame(g);if(info)this.sendVisual(()=>({type:'activation',activation:publicActivation(info)}));return activate(info)};
@@ -215,8 +215,8 @@ export function installLan(Controller,{newProfile,cleanName,createCpuPolicy,PART
  Promise.all(jobs).catch(()=>{});
  };
  P.start=function(){if(this.isGuest())return;return original.start.call(this)};
- P.choose=function(id,prompt,opts,context){if(this.abort)throw Error('対戦中断');if(this.cpu(id))return Promise.resolve(prompt==='ベストカード投票'?null:this.bot(id,prompt,opts,context));return new Promise((resolve,reject)=>{const c={id,prompt,opts,context,resolve,reject,selected:null,token:this.choiceSerial=(this.choiceSerial??0)+1};this.pending.set(id,c);if(id===this.ownId())this.setChoice(c);else this.render()})};
- P.setChoice=function(c){this.collapsedModal=null;this.choice=c?.id===this.ownId()?c:null;this.view=this.ownId();this.selected=null;this.filter={type:'all',trigger:'all',effect:'all',sort:'complex'};this.ui.offsets.delete('choice');this.ui.offsets.delete('vote');this.render()};
+ P.choose=function(id,prompt,opts,context){if(this.abort)throw Error('対戦中断');if(this.cpu(id))return Promise.resolve(prompt==='ベストカード投票'?null:this.bot(id,prompt,opts,context));return new Promise((resolve,reject)=>{const c={id,prompt,opts,context,resolve,reject,selected:null,token:this.choiceSerial=(this.choiceSerial??0)+1};this.pending.set(id,c);if(id===this.ownId())this.setChoice(c);else this.renderState()})};
+ P.setChoice=function(c){this.collapsedModal=null;this.choice=c?.id===this.ownId()?c:null;this.view=this.ownId();this.selected=null;this.filter={type:'all',trigger:'all',effect:'all',sort:'complex'};this.ui.offsets.delete('choice');this.ui.offsets.delete('vote');this.renderState()};
  P.accept=function(o){const c=this.choice;if(!c||!c.opts.includes(o))return;if(this.isGuest()){this.send({type:'choice',token:c.token,index:c.opts.indexOf(o)});return}this.pending.delete(c.id);this.setChoice(null);c.resolve(o)};
  P.canUse=function(){return original.canUse.call(this)&&this.view===this.ownId()};
  P.use=function(c){if(this.isGuest()){const current=this.g?.p[this.view]?.hand.find(card=>card?.id===c.id);if(this.canUse()&&current&&this.g.playable(current))this.send({type:'play',card:current.id});return}original.use.call(this,c)};

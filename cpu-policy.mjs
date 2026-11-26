@@ -18,14 +18,15 @@ export function chooseCpuTarget(id,opts,effect,policy=fallback){
  const tied=sorted.filter(o=>compare(o,sorted[0])===0);return pick(tied,policy.rnd);
 }
 const complexity=c=>c.kind==='action'?c.t.length+c.e.reduce((n,e)=>n+e.n,0):1;
-const effectWeight=(id,action)=>({attack:[8,10,2,2,3,1,-2,5,4,2,5,-3,1,5,-5,2,6,4,3,5,2,8],heal:[4,5,10,8,4,1,-2,2,4,3,4,-3,1,4,-8,9,5,2,3,5,2,4],edit:[5,6,3,2,5,2,-2,3,5,4,4,-2,1,4,-4,3,7,2,5,8,2,4]})[action]?.[id]??1;
+const EFFECT_WEIGHTS={attack:[8,10,2,2,3,1,-2,5,4,2,5,-3,1,5,-5,2,6,4,3,5,2,8],heal:[4,5,10,8,4,1,-2,2,4,3,4,-3,1,4,-8,9,5,2,3,5,2,4],edit:[5,6,3,2,5,2,-2,3,5,4,4,-2,1,4,-4,3,7,2,5,8,2,4]};
+const effectWeight=(id,action)=>EFFECT_WEIGHTS[action]?.[id]??1;
 const rank=(items,score,rnd)=>{if(!items.length)return undefined;const scores=items.map(item=>({item,score:score(item)})),best=Math.max(...scores.map(x=>x.score));return pick(scores.filter(x=>x.score===best),rnd).item};
 export function chooseCpuCard(game,p,policy=fallback){
  const candidates=p.hand.filter(c=>game.playable(c));if(!candidates.length)return undefined;
  if(policy.action==='random')return pick(candidates,policy.rnd);
  const live=game.alive(),other=live.filter(q=>q!==p),needsDraw=p.hand.length<=3||other.length>0&&other.every(q=>p.hand.length<q.hand.length),needsHeal=p.hp<(game.cfg?.hp??10)||p.hp<(game.cfg?.hp??10)+3&&live.every(q=>p.hp<=q.hp),exchange=chooseCpuTarget(p.id,live.map(v=>({v})),3,policy)?.v,exchangeGain=Math.max(0,(exchange?.hp??p.hp)-p.hp);
  const score=c=>{if(c.kind==='event'){const possible=p.hand.some(x=>x!==c&&(c.event<2||x.kind==='action'));return possible?(policy.action==='edit'?[16,12,19,22][c.event]:[2,1,3,4][c.event]):-Infinity}if(!c.t.includes(0)||game.used.has(c.id+':0'))return -Infinity;let value=0;for(const {id,n} of c.e){let w=effectWeight(id,policy.action);if(id===2&&policy.action==='heal'&&!needsHeal)w=2;if(id===3)w=exchangeGain?Math.min(12,exchangeGain*(policy.action==='heal'?3:1)):0;if((id===4||id===5)&&needsDraw)w+=3;if(id===8)w+=2;value+=n*w}return value};
- const active=candidates.filter(c=>Number.isFinite(score(c)));const preferred=active.filter(c=>policy.action==='edit'?c.kind==='event':c.kind==='action'&&c.e.some(e=>policy.action==='attack'?[0,1,21].includes(e.id):needsHeal&&([2,15].includes(e.id)||e.id===3&&exchangeGain>0)));return rank(preferred.length?preferred:active,score,policy.rnd);
+ const scores=new Map(candidates.map(c=>[c,score(c)])),active=candidates.filter(c=>Number.isFinite(scores.get(c)));const preferred=active.filter(c=>policy.action==='edit'?c.kind==='event':c.kind==='action'&&c.e.some(e=>policy.action==='attack'?[0,1,21].includes(e.id):needsHeal&&([2,15].includes(e.id)||e.id===3&&exchangeGain>0)));return rank(preferred.length?preferred:active,c=>scores.get(c),policy.rnd);
 }
 export function chooseCpuOption(game,id,prompt,opts,ctx={},policy=fallback){
  const usable=opts.filter(o=>o.v!=='back');if(!usable.length)return opts[0];

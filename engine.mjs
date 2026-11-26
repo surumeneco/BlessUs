@@ -43,7 +43,7 @@ standings(){return [...this.p].sort((a,b)=>b.score-a.score||b.lastRank-a.lastRan
 owner(c){return this.p.find(p=>p.hand.includes(c))}
 location(c){const p=this.owner(c);return p?{zone:'hand',player:p.id}:this.grave.includes(c)?{zone:'grave'}:this.deck.includes(c)?{zone:'deck'}:{zone:'outside'}}
 observe(event){this.onVisual?.(copy(event))}
-move(c,from,to,reason,extra={}){this.observe({type:'move',card:copy(c),from,to,reason,...extra})}
+move(c,from,to,reason,extra={}){this.observe({type:'move',card:c,from,to,reason,...extra})}
 async pick(p,prompt,opts,context={}){if(!opts.length)return null;const o=await this.choose(p.id,prompt,opts,context);if(!opts.includes(o))throw Error('無効な選択: '+prompt);return o}
 opts(ids,labels){return ids.map(v=>({v,label:labels[v]}))}
 cards(p,predicate=()=>true){return p.hand.filter(predicate).map(v=>({v,label:'#'+v.id+' '+describe(v)}))}
@@ -67,7 +67,7 @@ if(mode==='change'){
 if(kind==='t'){const prev=c.t[old];c.t[old]=id;if(this.used.delete(c.id+':'+prev))this.used.add(c.id+':'+id)}
 else{const prev=c.e[old];c.e.splice(old,1);const existing=c.e.find(e=>e.id===id);if(existing&&!uniqueE.has(id))existing.n+=prev.n;else if(!existing)c.e.splice(old,0,{id,n:uniqueE.has(id)?1:prev.n})}
 }else if(kind==='t')c.t.push(id);else this.addEffect(c,id);
-this.recordChange(c,p.id);this.say('P'+(p.id+1)+' がカードを'+(mode==='change'?'変更':'強化')+' #'+c.id);this.observe({type:'modify',player:p.id,card:copy(c),before,module:kind,mode,added:id,removed:mode==='change'?(kind==='t'?before.t[old]:before.e[old].id):null});if(g)this.emit(g,mode+(kind==='t'?'Trigger':'Effect'),p);return true}
+this.recordChange(c,p.id);this.say('P'+(p.id+1)+' がカードを'+(mode==='change'?'変更':'強化')+' #'+c.id);this.observe({type:'modify',player:p.id,card:c,before,module:kind,mode,added:id,removed:mode==='change'?(kind==='t'?before.t[old]:before.e[old].id):null});if(g)this.emit(g,mode+(kind==='t'?'Trigger':'Effect'),p);return true}
 group(origin){return {origin,entries:[],seq:0,cause:this.active?.seq??null}}
 emit(g,type,subject,actor=null,card=null){
 const matches=(p,c,t)=>{switch(t){case 0:return type==='use'&&c===card;case 1:return type==='discard'&&c===card;case 2:return type==='damage'&&p===subject;case 3:return type==='damage'&&p===actor;case 4:return type==='heal'&&p===subject;case 5:return type==='heal'&&p!==subject;case 6:return type==='draw'&&p===subject;case 7:return type==='draw'&&p!==subject;case 8:return type==='discard'&&p===subject;case 9:return type==='discard'&&p!==subject;case 10:return type==='start'&&p===subject;case 11:return type==='end'&&p===subject;case 12:return type==='ap'&&p!==subject;case 13:return type==='hand'&&c===card;case 14:return type==='ability'&&p===subject;case 15:return type==='ability'&&p!==subject;case 16:return type==='copy'&&p!==subject;default:return false}};
