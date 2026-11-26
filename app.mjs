@@ -1,7 +1,7 @@
 import {createCpuPolicy,chooseCpuOption,chooseCpuCard} from './cpu-policy.mjs?v=cards-2';
 import {PARTS,newProfile,randomAppearance,cleanName} from './player-profile.mjs?v=rules-1';
 import {logLayout,activationContext} from './log-layout.mjs?v=rules-1';
-import {Game,T,E,V,effectLabel,describe,presets,presetCards,triggerOrder,effectOrder} from './engine.mjs?v=deck-presets-1';
+import {Game,T,E,V,effectLabel,describe,presets,presetCards,triggerOrder,effectOrder} from './engine.mjs?v=deck-presets-2';
 import {PT,PE,normalizePower,powerEffectLabel,powerScore,powerCount} from './power.mjs';
 import {Surface,C,COLORS,AB,EV,RATIO,total,cardRows,wrap,textWidth,rect,center} from './presentation.mjs?v=modification-prompts-1';
 const clone=x=>JSON.parse(JSON.stringify(x)),sleep=ms=>new Promise(r=>setTimeout(r,ms)),clamp=(v,a,b)=>Math.min(b,Math.max(a,v));
