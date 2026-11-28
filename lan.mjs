@@ -43,9 +43,23 @@ export function playerView(g,id,history=null){
  pending:g.pendingCards().filter(c=>visible.has(c.id)).map(c=>c.id),
  ...(history?{historyFrom:history,activeSeq:g.active?.seq??null,lastActivationSeq:g.lastActivation?.seq??null,allActivations:g.allActivations.slice(history.activations).map(publicActivation),timeline:copy(g.timeline.slice(history.timeline))}:{active:publicActivation(g.active),lastActivation:publicActivation(g.lastActivation),activations:g.activations.map(publicActivation),allActivations:g.allActivations.map(publicActivation),timeline:copy(g.timeline)})};
 }
+// Match confirmed targets by identity, never by the option's position.
+export function targetFocusKey(active,c){
+ const step=active?.progress?.at(-1),kind=c.context?.kind;
+ if(!['player','card','grave'].includes(kind)||!step||!['line','random','event'].includes(step.kind))return null;
+ const effect=step.kind==='event'?'event:'+active.card.event:(step.power?'power:':'effect:')+step.id;
+ return JSON.stringify([c.id,effect,kind,kind==='player'?'':c.prompt]);
+}
+export function restoreTargetFocus(history,c){
+ const id=history?.get(c.focusKey);
+ return c.focusKey!=null&&id!=null?c.opts.find(o=>o.v?.id===id)??null:null;
+}
+export function rememberTargetFocus(history,c,o){
+ if(c.focusKey!=null&&o.v?.id!=null)history.set(c.focusKey,o.v.id);
+}
 export function choiceView(c){
  if(!c)return null;
- return {id:c.id,token:c.token,prompt:c.prompt,context:copy(c.context??{}),opts:c.opts.map(o=>({...copy(o),v:c.context?.kind==='player'?{playerId:o.v.id}:copy(o.v)}))};
+ return {id:c.id,token:c.token,prompt:c.prompt,context:copy(c.context??{}),selectedIndex:c.opts.indexOf(c.selected),opts:c.opts.map(o=>({...copy(o),v:c.context?.kind==='player'?{playerId:o.v.id}:copy(o.v)}))};
 }
 export function hydrateView(v,id,previous=null){
  if(v.historyFrom){const {activations,timeline}=v.historyFrom;if(activations>(previous?.allActivations?.length??0)||timeline>(previous?.timeline?.length??0))throw Error('Missing history prefix');const allActivations=[...(previous?.allActivations??[]).slice(0,activations),...v.allActivations],entries=[...(previous?.timeline??[]).slice(0,timeline),...v.timeline];const current=allActivations.filter(a=>a.round===v.round),find=seq=>seq==null?null:allActivations.find(a=>a.seq===seq)??null;const {historyFrom,activeSeq,lastActivationSeq,...rest}=v;v={...rest,allActivations,activations:current,timeline:entries,active:find(activeSeq),lastActivation:find(lastActivationSeq)}}
@@ -57,7 +71,8 @@ export function hydrateView(v,id,previous=null){
 }
 export function hydrateChoice(v,g){
  if(!v)return null;
- return {...v,selected:null,opts:v.opts.map(o=>({...o,v:v.context?.kind==='player'?g.p[o.v.playerId]:v.context?.kind==='card'&&o.v?.id!=null?g.p[v.id].hand.find(c=>c.id===o.v.id)??o.v:v.context?.kind==='grave'?g.grave.find(c=>c.id===o.v.id)??o.v:o.v}))};
+ const opts=v.opts.map(o=>({...o,v:v.context?.kind==='player'?g.p[o.v.playerId]:v.context?.kind==='card'&&o.v?.id!=null?g.p[v.id].hand.find(c=>c.id===o.v.id)??o.v:v.context?.kind==='grave'?g.grave.find(c=>c.id===o.v.id)??o.v:o.v}));
+ return {...v,selected:opts[v.selectedIndex]??null,opts};
 }
 
 // Presentation-only aggregation; never merge engine events or trigger/log entries.
@@ -144,7 +159,7 @@ export function installLan(Controller,{newProfile,cleanName,createCpuPolicy,PART
  if(this.page==='room'){if(msg.name!==undefined){const name=cleanName(msg.name);if(!name||!this.uniqueName(name,id)){error('同じ名前は使用できません');return}member.profile.humanName=name}
  if(['human','cpu'].includes(msg.mode)){member.mode=msg.mode;this.modes[id]=msg.mode}}this.renderState();return}
  if(this.page!=='battle'||!this.g||this.cpu(id))return;
- if(msg.type==='choice'){const c=this.pending.get(id);if(c&&c.token===msg.token&&Number.isInteger(msg.index)&&c.opts[msg.index]){this.pending.delete(id);c.resolve(c.opts[msg.index]);this.renderState()}return}
+ if(msg.type==='choice'){const c=this.pending.get(id);if(c&&c.token===msg.token&&Number.isInteger(msg.index)&&c.opts[msg.index]){rememberTargetFocus(this.targetFocus??=new Map(),c,c.opts[msg.index]);this.pending.delete(id);c.resolve(c.opts[msg.index]);this.renderState()}return}
  if(msg.seq!==(this.actionSeq??0)||this.busy||this.pending.size||this.flow||this.g.phase!=='play'||this.g.turn!==id||this.g.p[id].dead||this.g.p[id].ap<1)return;
  if(msg.type==='play'){const c=this.g.p[id].hand.find(c=>c.id===msg.card);if(c&&this.g.playable(c))this.run(()=>this.g.play(c.id))}
  else if(msg.type==='end')this.run(()=>this.g.endTurn());

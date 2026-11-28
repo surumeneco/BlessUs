@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {webcrypto} from 'node:crypto';
-import {peerOptions,observeConnection,roomPeerId,classifyJoin,playerView,hydrateView,choiceView,hydrateChoice,visualView,combineLineVisuals} from './lan.mjs';
+import {peerOptions,observeConnection,roomPeerId,classifyJoin,playerView,hydrateView,choiceView,hydrateChoice,visualView,combineLineVisuals,targetFocusKey,restoreTargetFocus,rememberTargetFocus} from './lan.mjs';
 import {Game} from './engine.mjs';
 assert.deepEqual(peerOptions().config.iceServers,[{urls:'stun:stun.l.google.com:19302'}]);
 assert.notEqual(peerOptions().config.iceServers,peerOptions().config.iceServers);
@@ -61,3 +61,25 @@ await disconnectedVote.vote();assert.equal(disconnectedVote.votingResults.length
 console.log('PASS animation privacy and disconnected voter skip');
 
 const sourceEvents=[{type:'hp',player:0,actor:1,old:10,value:9},{type:'hp',player:2,actor:1,old:10,value:9},{type:'hp',player:0,actor:1,old:9,value:8},{type:'ap',player:1,value:1},{type:'ap',player:1,value:2},hidden];const originalEvents=JSON.stringify(sourceEvents),combined=combineLineVisuals(sourceEvents);assert.deepEqual(combined.map(e=>e.type),['hp','hp','ap','move']);assert.deepEqual(combined.slice(0,2).map(e=>[e.player,e.old,e.value]),[[0,10,8],[2,10,9]]);assert.equal(combined[2].count,2);assert.deepEqual(visualView(combined[2],2),{type:'ap',player:1,count:2});assert.equal(visualView(combined[3],1).card,null);assert.equal(JSON.stringify(sourceEvents),originalEvents);assert.equal(combineLineVisuals([{type:'hp',presentation:'exchange',player:0,old:1,value:4},{type:'hp',presentation:'exchange',player:0,old:4,value:2}]).length,2);console.log('PASS effect-row visual aggregation preserves source events, separate targets and privacy');
+
+const focusHistory=new Map(),playerOptions=g.p.map(v=>({v,label:'P'+v.id}));
+const targetChoice=(id,effect,opts=playerOptions,power=false)=>{const c={id,token:7,prompt:'対象',context:{kind:'player',effect},opts};c.focusKey=targetFocusKey({progress:[{kind:'line',id:effect,power}]},c);return c};
+const damage=targetChoice(0,0);assert.equal(restoreTargetFocus(focusHistory,damage),null);
+rememberTargetFocus(focusHistory,damage,playerOptions[1]);
+const reordered=targetChoice(0,0,[playerOptions[1],playerOptions[2],playerOptions[0]]);
+assert.equal(restoreTargetFocus(focusHistory,reordered),playerOptions[1]);
+assert.equal(restoreTargetFocus(focusHistory,targetChoice(0,15)),null);
+assert.equal(restoreTargetFocus(focusHistory,targetChoice(1,0)),null);
+assert.equal(restoreTargetFocus(focusHistory,targetChoice(0,0,playerOptions,true)),null);
+assert.equal(restoreTargetFocus(focusHistory,targetChoice(0,0,[playerOptions[0],playerOptions[2]])),null);
+reordered.selected=restoreTargetFocus(focusHistory,reordered);
+const remoteFocus=hydrateChoice(choiceView(reordered),h);
+assert.equal(remoteFocus.selected,remoteFocus.opts[0]);assert.equal(remoteFocus.selected.v,h.p[1]);
+rememberTargetFocus(focusHistory,reordered,playerOptions[2]);assert.equal(restoreTargetFocus(focusHistory,damage),playerOptions[2]);
+const cardChoice={id:1,prompt:'渡す手札',context:{kind:'card'},opts:g.p[1].hand.map(v=>({v}))};
+cardChoice.focusKey=targetFocusKey({progress:[{kind:'line',id:11}]},cardChoice);
+rememberTargetFocus(focusHistory,cardChoice,cardChoice.opts[0]);
+assert.equal(restoreTargetFocus(focusHistory,{...cardChoice,opts:cardChoice.opts.map(o=>({v:{...o.v}}))}).v.id,cardChoice.opts[0].v.id);
+assert.equal(restoreTargetFocus(focusHistory,{...cardChoice,opts:[]}),null);
+focusHistory.clear();assert.equal(restoreTargetFocus(focusHistory,damage),null);
+console.log('PASS per-player/effect target focus, valid identities, LAN hydration and reset');
