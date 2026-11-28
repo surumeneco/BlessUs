@@ -66,7 +66,7 @@ const focusHistory=new Map(),playerOptions=g.p.map(v=>({v,label:'P'+v.id}));
 const targetChoice=(id,effect,opts=playerOptions,power=false)=>{const c={id,token:7,prompt:'対象',context:{kind:'player',effect},opts};c.focusKey=targetFocusKey({progress:[{kind:'line',id:effect,power}]},c);return c};
 const damage=targetChoice(0,0);assert.equal(restoreTargetFocus(focusHistory,damage),null);
 rememberTargetFocus(focusHistory,damage,playerOptions[1]);
-const reordered=targetChoice(0,0,[playerOptions[2],playerOptions[1],playerOptions[0]]);
+const reordered=targetChoice(0,0,[playerOptions[1],playerOptions[2],playerOptions[0]]);
 assert.equal(restoreTargetFocus(focusHistory,reordered),playerOptions[1]);
 assert.equal(restoreTargetFocus(focusHistory,targetChoice(0,15)),null);
 assert.equal(restoreTargetFocus(focusHistory,targetChoice(1,0)),null);
@@ -74,7 +74,7 @@ assert.equal(restoreTargetFocus(focusHistory,targetChoice(0,0,playerOptions,true
 assert.equal(restoreTargetFocus(focusHistory,targetChoice(0,0,[playerOptions[0],playerOptions[2]])),null);
 reordered.selected=restoreTargetFocus(focusHistory,reordered);
 const remoteFocus=hydrateChoice(choiceView(reordered),h);
-assert.equal(remoteFocus.selected,remoteFocus.opts[1]);assert.equal(remoteFocus.selected.v,h.p[1]);
+assert.equal(remoteFocus.selected,remoteFocus.opts[0]);assert.equal(remoteFocus.selected.v,h.p[1]);
 rememberTargetFocus(focusHistory,reordered,playerOptions[2]);assert.equal(restoreTargetFocus(focusHistory,damage),playerOptions[2]);
 const cardChoice={id:1,prompt:'渡す手札',context:{kind:'card'},opts:g.p[1].hand.map(v=>({v}))};
 cardChoice.focusKey=targetFocusKey({progress:[{kind:'line',id:11}]},cardChoice);
